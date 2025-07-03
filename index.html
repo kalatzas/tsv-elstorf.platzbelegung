@@ -170,6 +170,9 @@
             const [viewMode, setViewMode] = useState('table'); // 'table' or 'calendar'
             const [showSeriesModal, setShowSeriesModal] = useState(false);
             const [currentWeek, setCurrentWeek] = useState(0);
+            const [viewMode, setViewMode] = useState('table'); // 'table' or 'calendar'
+            const [showSeriesModal, setShowSeriesModal] = useState(false);
+            const [currentWeek, setCurrentWeek] = useState(0);
             
             // Plätze Definition
             const fields = [
@@ -200,6 +203,7 @@
                 title: '',
                 cabin: '',
                 trainer: '',
+                position: '', // neu: links, mitte, rechts
                 isRecurring: false,
                 recurringWeeks: 1,
                 recurringEndDate: ''
@@ -215,6 +219,7 @@
                 title: '',
                 cabin: '',
                 trainer: '',
+                position: '', // neu: links, mitte, rechts
                 weeks: 10,
                 skipWeeks: [],
                 startDate: ''
@@ -230,6 +235,12 @@
 
             const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
             const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
+            const positions = [
+                { value: '', label: 'Keine Angabe' },
+                { value: 'li', label: 'Links' },
+                { value: 'mi', label: 'Mitte' },
+                { value: 're', label: 'Rechts' }
+            ];
 
             // Wetter-Simulation
             useEffect(() => {
@@ -279,7 +290,8 @@
                             team: 'U15',
                             title: 'U15 Training',
                             cabin: 'Kabine 1',
-                            trainer: 'Max Mustermann'
+                            trainer: 'Max Mustermann',
+                            position: 'mi'
                         },
                         {
                             id: 2,
@@ -291,7 +303,8 @@
                             team: 'U13',
                             title: 'U13 Training',
                             cabin: 'Kabine 2',
-                            trainer: 'Anna Schmidt'
+                            trainer: 'Anna Schmidt',
+                            position: 'li'
                         },
                         {
                             id: 3,
@@ -303,7 +316,8 @@
                             team: 'U17',
                             title: 'U17 vs FC Beispiel',
                             cabin: 'Kabine 1',
-                            trainer: 'Peter Weber'
+                            trainer: 'Peter Weber',
+                            position: ''
                         }
                     ];
                     setEvents(exampleEvents);
@@ -350,6 +364,14 @@
                 });
             };
 
+            const formatDate = (date) => {
+                return date.toLocaleDateString('de-DE', { 
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    year: 'numeric' 
+                });
+            };
+
             const getWeekDates = (weekOffset = 0) => {
                 const weekStart = getWeekStart(weekOffset);
                 return weekdays.map((day, index) => {
@@ -380,6 +402,14 @@
                 return event.time === time;
             };
 
+            // Prüfe ob Event zu einer bestimmten Zeit läuft (aber nicht beginnt)
+            const eventRunsAtTime = (event, time) => {
+                const eventStartTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
+                const eventEndTime = eventStartTime + event.duration;
+                const slotTime = parseFloat(time.replace(':', '.').replace('30', '5'));
+                return slotTime > eventStartTime && slotTime < eventEndTime;
+            };
+
             // Berechne Endzeit eines Events
             const getEventEndTime = (event) => {
                 const startTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
@@ -387,6 +417,22 @@
                 const hours = Math.floor(endTime);
                 const minutes = (endTime - hours) * 60;
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            };
+
+            // Verbesserte Wochenberechnung für Serientermine
+            const getWeekStart = (weekOffset = 0) => {
+                const today = new Date();
+                const currentDayOfWeek = today.getDay(); // 0 = Sonntag, 1 = Montag, etc.
+                const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
+                
+                const monday = new Date(today);
+                monday.setDate(today.getDate() - daysToMonday);
+                monday.setHours(0, 0, 0, 0);
+                
+                // Füge Wochen hinzu
+                monday.setDate(monday.getDate() + (weekOffset * 7));
+                
+                return monday;
             };
 
             const checkTimeConflicts = (field, day, time, duration, excludeId = null) => {
@@ -468,10 +514,23 @@
                 for (let week = 0; week < seriesEvent.weeks; week++) {
                     if (seriesEvent.skipWeeks.includes(week)) continue;
                     
-                    const weekStart = getWeekStart(week);
-                    const dayIndex = weekdays.indexOf(seriesEvent.day);
-                    const eventDate = new Date(weekStart);
-                    eventDate.setDate(weekStart.getDate() + dayIndex);
+                    // Berechne das korrekte Datum für diese Woche
+                    const baseDate = new Date();
+                    const targetDayIndex = weekdays.indexOf(seriesEvent.day);
+                    const currentDayIndex = baseDate.getDay() === 0 ? 6 : baseDate.getDay() - 1; // Sonntag = 6
+                    
+                    // Berechne Tage bis zum Ziel-Wochentag
+                    let daysToTarget = targetDayIndex - currentDayIndex;
+                    if (daysToTarget < 0) {
+                        daysToTarget += 7; // Nächste Woche
+                    }
+                    
+                    // Erstelle das Datum für diese Woche
+                    const eventDate = new Date(baseDate);
+                    eventDate.setDate(baseDate.getDate() + daysToTarget + (week * 7));
+                    eventDate.setHours(0, 0, 0, 0);
+                    
+                    console.log(`Woche ${week + 1}: ${seriesEvent.day}, ${eventDate.toLocaleDateString()}`);
                     
                     // Prüfe Konflikte nur für den spezifischen Platz
                     const conflicts = checkTimeConflicts(seriesEvent.field, seriesEvent.day, seriesEvent.time, seriesEvent.duration);
@@ -508,6 +567,7 @@
                     title: '',
                     cabin: '',
                     trainer: '',
+                    position: '',
                     weeks: 10,
                     skipWeeks: [],
                     startDate: ''
@@ -544,6 +604,7 @@
                     title: '',
                     cabin: '',
                     trainer: '',
+                    position: '',
                     isRecurring: false,
                     recurringWeeks: 1,
                     recurringEndDate: ''
@@ -677,7 +738,7 @@
                                 ← Vorherige Woche
                             </button>
                             <div className="font-semibold">
-                                Woche vom {formatDate(getWeekStart(currentWeek))} - {formatDate(getWeekStart(currentWeek + 1))}
+                                Woche vom {formatDate(getWeekStart(currentWeek))} - {formatDate(new Date(getWeekStart(currentWeek).getTime() + 6 * 24 * 60 * 60 * 1000))}
                             </div>
                             <button
                                 onClick={() => setCurrentWeek(prev => prev + 1)}
@@ -716,44 +777,62 @@
                                     {weekdays.map(day => (
                                         <div key={day} className="border-r p-2 relative">
                                             <div className="space-y-1">
-                                                {getEventsAtTime(day, time).map(event => {
+                                                {/* Events die zu dieser Zeit beginnen */}
+                                                {getEventsAtTime(day, time).filter(event => eventStartsAtTime(event, time)).map(event => {
                                                     const eventType = eventTypes[event.type];
                                                     const field = fields.find(f => f.id === event.field);
-                                                    const isStartTime = eventStartsAtTime(event, time);
                                                     
-                                                    // Nur zeigen wenn Event zu dieser Zeit beginnt
-                                                    if (isStartTime) {
-                                                        return (
-                                                            <div
-                                                                key={event.id}
-                                                                className={`${eventType.color} border-l-4 border-${field.color.split('-')[1]}-400 rounded p-1 text-xs cursor-pointer hover:shadow-md transition-shadow`}
-                                                                onClick={() => setEditingEvent({...event})}
-                                                            >
-                                                                <div className="font-semibold">{eventType.icon} {event.team}</div>
-                                                                <div className="text-xs opacity-75">{field?.name}</div>
-                                                                <div className="text-xs opacity-75">
-                                                                    {event.time} - {getEventEndTime(event)}
-                                                                </div>
-                                                                <div className="text-xs opacity-75">🚪 {event.cabin}</div>
-                                                                <div className="text-xs opacity-75">👨‍🏫 {event.trainer}</div>
-                                                                {event.isSeriesEvent && <div className="text-xs opacity-75">🔄 Serie</div>}
+                                                    return (
+                                                        <div
+                                                            key={event.id}
+                                                            className={`${eventType.color} border-l-4 border-${field.color.split('-')[1]}-400 rounded p-1 text-xs cursor-pointer hover:shadow-md transition-shadow`}
+                                                            onClick={() => setEditingEvent({...event})}
+                                                        >
+                                                            <div className="font-semibold">{eventType.icon} {event.team}</div>
+                                                            <div className="text-xs opacity-75">{field?.name}</div>
+                                                            <div className="text-xs opacity-75">
+                                                                {event.time} - {getEventEndTime(event)}
                                                             </div>
-                                                        );
-                                                    }
-                                                    return null;
+                                                            <div className="text-xs opacity-75">🚪 {event.cabin}</div>
+                                                            <div className="text-xs opacity-75">👨‍🏫 {event.trainer}</div>
+                                                            {event.position && (
+                                                                <div className="text-xs opacity-75">📍 {positions.find(p => p.value === event.position)?.label}</div>
+                                                            )}
+                                                            {event.isSeriesEvent && <div className="text-xs opacity-75">🔄 Serie</div>}
+                                                        </div>
+                                                    );
+                                                })}
+                                                
+                                                {/* Events die zu dieser Zeit laufen (aber nicht beginnen) */}
+                                                {getEventsAtTime(day, time).filter(event => eventRunsAtTime(event, time)).map(event => {
+                                                    const eventType = eventTypes[event.type];
+                                                    const field = fields.find(f => f.id === event.field);
+                                                    
+                                                    return (
+                                                        <div
+                                                            key={`running-${event.id}`}
+                                                            className={`${eventType.color} border-l-4 border-${field.color.split('-')[1]}-400 rounded p-1 text-xs cursor-pointer hover:shadow-md transition-shadow opacity-60`}
+                                                            onClick={() => setEditingEvent({...event})}
+                                                        >
+                                                            <div className="font-semibold text-center">⏱️ {event.team}</div>
+                                                            <div className="text-xs opacity-75 text-center">läuft...</div>
+                                                        </div>
+                                                    );
                                                 })}
                                             </div>
                                             
-                                            {/* Klick zum Hinzufügen */}
-                                            <div
-                                                className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
-                                                onClick={() => {
-                                                    setNewEvent({...newEvent, day: day, time: time});
-                                                    setShowAddModal(true);
-                                                }}
-                                            >
-                                                ➕
-                                            </div>
+                                            {/* Klick zum Hinzufügen nur wenn keine Events laufen */}
+                                            {getEventsAtTime(day, time).length === 0 && (
+                                                <div
+                                                    className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+                                                    onClick={() => {
+                                                        setNewEvent({...newEvent, day: day, time: time});
+                                                        setShowAddModal(true);
+                                                    }}
+                                                >
+                                                    ➕
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -935,6 +1014,185 @@
                                             <option value="">Kabine wählen</option>
                                             {cabins.map(cabin => (
                                                 <option key={cabin} value={cabin}>{cabin}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Position</label>
+                                        <select
+                                            value={seriesEvent.position}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, position: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            {positions.map(pos => (
+                                                <option key={pos.value} value={pos.value}>{pos.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Anzahl Wochen</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="52"
+                                            value={seriesEvent.weeks}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, weeks: parseInt(e.target.value)})}
+                                            className="w-full border rounded-lg p-2"
+                                        />
+                                    </div>
+
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                        <h4 className="font-semibold text-blue-800 mb-2">Vorschau</h4>
+                                        <div className="text-sm text-blue-700">
+                                            <div>📅 {seriesEvent.weeks} Termine werden erstellt</div>
+                                            <div>🕐 Jeden {seriesEvent.day} um {seriesEvent.time}</div>
+                                            <div>🏟️ {fields.find(f => f.id === seriesEvent.field)?.name}</div>
+                                            <div>⚽ {seriesEvent.team} - {seriesEvent.title}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 mt-6">
+                                    <button
+                                        onClick={() => setShowSeriesModal(false)}
+                                        className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400"
+                                    >
+                                        Abbrechen
+                                    </button>
+                                    <button
+                                        onClick={createSeriesEvents}
+                                        className="flex-1 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700"
+                                    >
+                                        Serie erstellen
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Serientermine Modal */}
+                    {showSeriesModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+                                <h2 className="text-xl font-bold mb-4">Serientermine erstellen</h2>
+                                
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Platz*</label>
+                                        <select
+                                            value={seriesEvent.field}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, field: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            <option value="">Platz wählen</option>
+                                            {fields.map(field => (
+                                                <option key={field.id} value={field.id}>{field.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Wochentag*</label>
+                                        <select
+                                            value={seriesEvent.day}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, day: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            <option value="">Wochentag wählen</option>
+                                            {weekdays.map(day => (
+                                                <option key={day} value={day}>{day}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Uhrzeit*</label>
+                                        <select
+                                            value={seriesEvent.time}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, time: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            <option value="">Uhrzeit wählen</option>
+                                            {timeSlots.map(time => (
+                                                <option key={time} value={time}>{time}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Typ*</label>
+                                        <select
+                                            value={seriesEvent.type}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, type: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            {Object.entries(eventTypes).map(([key, type]) => (
+                                                <option key={key} value={key}>{type.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Team*</label>
+                                        <select
+                                            value={seriesEvent.team}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, team: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            <option value="">Team wählen</option>
+                                            {teams.map(team => (
+                                                <option key={team} value={team}>{team}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Titel*</label>
+                                        <input
+                                            type="text"
+                                            value={seriesEvent.title}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, title: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                            placeholder="z.B. U15 Training"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Trainer</label>
+                                        <input
+                                            type="text"
+                                            value={seriesEvent.trainer}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, trainer: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                            placeholder="Name des Trainers"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Kabine</label>
+                                        <select
+                                            value={seriesEvent.cabin}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, cabin: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            <option value="">Kabine wählen</option>
+                                            {cabins.map(cabin => (
+                                                <option key={cabin} value={cabin}>{cabin}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Position</label>
+                                        <select
+                                            value={seriesEvent.position}
+                                            onChange={(e) => setSeriesEvent({...seriesEvent, position: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            {positions.map(pos => (
+                                                <option key={pos.value} value={pos.value}>{pos.label}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -1229,6 +1487,19 @@
                                             <option value="">Kabine wählen</option>
                                             {cabins.map(cabin => (
                                                 <option key={cabin} value={cabin}>{cabin}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Position</label>
+                                        <select
+                                            value={editingEvent.position || ''}
+                                            onChange={(e) => setEditingEvent({...editingEvent, position: e.target.value})}
+                                            className="w-full border rounded-lg p-2"
+                                        >
+                                            {positions.map(pos => (
+                                                <option key={pos.value} value={pos.value}>{pos.label}</option>
                                             ))}
                                         </select>
                                     </div>
