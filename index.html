@@ -187,45 +187,8 @@
 
             const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
-            // Beispiel-Events (Diese würden normalerweise aus einer Datenbank kommen)
-            const [events, setEvents] = useState([
-                {
-                    id: 1,
-                    field: 'platz2',
-                    day: 'Montag',
-                    time: '17:00',
-                    duration: 1.5,
-                    type: 'training',
-                    team: 'U15',
-                    title: 'U15 Training',
-                    cabin: 'Kabine 1',
-                    trainer: 'Max Mustermann'
-                },
-                {
-                    id: 2,
-                    field: 'platz3',
-                    day: 'Montag',
-                    time: '18:00',
-                    duration: 1.5,
-                    type: 'training',
-                    team: 'U13',
-                    title: 'U13 Training',
-                    cabin: 'Kabine 2',
-                    trainer: 'Anna Schmidt'
-                },
-                {
-                    id: 3,
-                    field: 'platz1',
-                    day: 'Samstag',
-                    time: '16:00',
-                    duration: 2,
-                    type: 'match',
-                    team: 'U17',
-                    title: 'U17 vs FC Beispiel',
-                    cabin: 'Kabine 1',
-                    trainer: 'Peter Weber'
-                }
-            ]);
+            // Beispiel-Events (nur wenn keine gespeicherten Daten vorhanden)
+            const [events, setEvents] = useState([]);
 
             const [newEvent, setNewEvent] = useState({
                 field: '',
@@ -289,6 +252,81 @@
                 return () => clearInterval(interval);
             }, []);
 
+            // Persistenz - Daten laden und speichern
+            useEffect(() => {
+                const savedEvents = localStorage.getItem('football-scheduler-events');
+                if (savedEvents) {
+                    try {
+                        const parsedEvents = JSON.parse(savedEvents);
+                        setEvents(parsedEvents);
+                        if (parsedEvents.length > 0) {
+                            addNotification('📂 Termine geladen', 'success');
+                        }
+                    } catch (error) {
+                        console.error('Fehler beim Laden der Termine:', error);
+                        addNotification('❌ Fehler beim Laden der Termine', 'error');
+                    }
+                } else {
+                    // Beispiel-Events beim ersten Start
+                    const exampleEvents = [
+                        {
+                            id: 1,
+                            field: 'platz2',
+                            day: 'Montag',
+                            time: '17:00',
+                            duration: 1.5,
+                            type: 'training',
+                            team: 'U15',
+                            title: 'U15 Training',
+                            cabin: 'Kabine 1',
+                            trainer: 'Max Mustermann'
+                        },
+                        {
+                            id: 2,
+                            field: 'platz3',
+                            day: 'Montag',
+                            time: '18:00',
+                            duration: 1.5,
+                            type: 'training',
+                            team: 'U13',
+                            title: 'U13 Training',
+                            cabin: 'Kabine 2',
+                            trainer: 'Anna Schmidt'
+                        },
+                        {
+                            id: 3,
+                            field: 'platz1',
+                            day: 'Samstag',
+                            time: '16:00',
+                            duration: 2,
+                            type: 'match',
+                            team: 'U17',
+                            title: 'U17 vs FC Beispiel',
+                            cabin: 'Kabine 1',
+                            trainer: 'Peter Weber'
+                        }
+                    ];
+                    setEvents(exampleEvents);
+                    addNotification('🎯 Beispiel-Termine geladen', 'info');
+                }
+            }, []);
+
+            // Daten speichern bei Änderungen
+            useEffect(() => {
+                if (events.length >= 0) { // Auch leere Arrays speichern
+                    localStorage.setItem('football-scheduler-events', JSON.stringify(events));
+                }
+            }, [events]);
+
+            // Daten zurücksetzen
+            const resetData = () => {
+                if (confirm('Alle Termine wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+                    localStorage.removeItem('football-scheduler-events');
+                    setEvents([]);
+                    addNotification('🗑️ Alle Termine gelöscht', 'info');
+                }
+            };
+
             // Hilfsfunktionen
             const isDarkSeason = () => {
                 const now = new Date();
@@ -326,12 +364,38 @@
                 });
             };
 
+            // Alle Events für einen bestimmten Zeitslot (unabhängig vom Platz)
+            const getEventsAtTime = (day, time) => {
+                return events.filter(event => {
+                    if (event.day !== day) return false;
+                    const eventStartTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
+                    const eventEndTime = eventStartTime + event.duration;
+                    const slotTime = parseFloat(time.replace(':', '.').replace('30', '5'));
+                    return slotTime >= eventStartTime && slotTime < eventEndTime;
+                });
+            };
+
+            // Prüfe ob Event zu einer bestimmten Zeit beginnt
+            const eventStartsAtTime = (event, time) => {
+                return event.time === time;
+            };
+
+            // Berechne Endzeit eines Events
+            const getEventEndTime = (event) => {
+                const startTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
+                const endTime = startTime + event.duration;
+                const hours = Math.floor(endTime);
+                const minutes = (endTime - hours) * 60;
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            };
+
             const checkTimeConflicts = (field, day, time, duration, excludeId = null) => {
                 const startTime = parseFloat(time.replace(':', '.').replace('30', '5'));
                 const endTime = startTime + duration;
                 
                 return events.filter(event => {
                     if (event.id === excludeId) return false;
+                    // Nur Konflikte für den gleichen Platz prüfen
                     if (event.field !== field || event.day !== day) return false;
                     
                     const eventStartTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
@@ -399,6 +463,7 @@
                 }
 
                 const newEvents = [];
+                const seriesId = Date.now();
                 
                 for (let week = 0; week < seriesEvent.weeks; week++) {
                     if (seriesEvent.skipWeeks.includes(week)) continue;
@@ -408,20 +473,28 @@
                     const eventDate = new Date(weekStart);
                     eventDate.setDate(weekStart.getDate() + dayIndex);
                     
-                    // Prüfe Konflikte für diese Woche
+                    // Prüfe Konflikte nur für den spezifischen Platz
                     const conflicts = checkTimeConflicts(seriesEvent.field, seriesEvent.day, seriesEvent.time, seriesEvent.duration);
                     
                     if (conflicts.length === 0) {
                         const event = {
                             ...seriesEvent,
-                            id: Date.now() + week,
+                            id: seriesId + week,
                             week: week,
                             fullDate: eventDate,
                             isSeriesEvent: true,
-                            seriesId: Date.now()
+                            seriesId: seriesId
                         };
                         newEvents.push(event);
+                    } else {
+                        // Warnung bei Konflikt aber trotzdem weitermachen
+                        console.warn(`Konflikt in Woche ${week + 1} für ${seriesEvent.title}`);
                     }
+                }
+
+                if (newEvents.length === 0) {
+                    alert('Keine Termine konnten erstellt werden - alle Zeitslots sind bereits belegt!');
+                    return;
                 }
 
                 setEvents(prev => [...prev, ...newEvents]);
@@ -624,7 +697,7 @@
                     {/* Tabellenansicht */}
                     {viewMode === 'table' && (
                         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                            <div className="grid grid-cols-7 gap-0 border-b">
+                            <div className="grid grid-cols-8 gap-0 border-b">
                                 <div className="p-4 bg-gray-100 font-semibold">Zeit</div>
                                 {getWeekDates(currentWeek).map(({ day, date, month }) => (
                                     <div key={day} className="p-4 bg-gray-100 font-semibold text-center">
@@ -635,7 +708,7 @@
                             </div>
 
                             {timeSlots.map(time => (
-                                <div key={time} className="grid grid-cols-7 gap-0 border-b min-h-[80px]">
+                                <div key={time} className="grid grid-cols-8 gap-0 border-b min-h-[80px]">
                                     <div className="p-4 bg-gray-50 font-medium border-r flex items-center">
                                         {time}
                                     </div>
@@ -643,20 +716,26 @@
                                     {weekdays.map(day => (
                                         <div key={day} className="border-r p-2 relative">
                                             <div className="space-y-1">
-                                                {fields.map(field => {
-                                                    const event = getEventAtTime(field.id, day, time);
+                                                {getEventsAtTime(day, time).map(event => {
+                                                    const eventType = eventTypes[event.type];
+                                                    const field = fields.find(f => f.id === event.field);
+                                                    const isStartTime = eventStartsAtTime(event, time);
                                                     
-                                                    if (event && time === event.time) {
-                                                        const eventType = eventTypes[event.type];
+                                                    // Nur zeigen wenn Event zu dieser Zeit beginnt
+                                                    if (isStartTime) {
                                                         return (
                                                             <div
-                                                                key={field.id}
+                                                                key={event.id}
                                                                 className={`${eventType.color} border-l-4 border-${field.color.split('-')[1]}-400 rounded p-1 text-xs cursor-pointer hover:shadow-md transition-shadow`}
                                                                 onClick={() => setEditingEvent({...event})}
                                                             >
                                                                 <div className="font-semibold">{eventType.icon} {event.team}</div>
-                                                                <div className="text-xs opacity-75">{fields.find(f => f.id === field.id)?.name}</div>
+                                                                <div className="text-xs opacity-75">{field?.name}</div>
+                                                                <div className="text-xs opacity-75">
+                                                                    {event.time} - {getEventEndTime(event)}
+                                                                </div>
                                                                 <div className="text-xs opacity-75">🚪 {event.cabin}</div>
+                                                                <div className="text-xs opacity-75">👨‍🏫 {event.trainer}</div>
                                                                 {event.isSeriesEvent && <div className="text-xs opacity-75">🔄 Serie</div>}
                                                             </div>
                                                         );
