@@ -26,11 +26,11 @@
             const [currentWeek, setCurrentWeek] = useState(0);
             
             const fields = [
-                { id: 'platz1', name: 'Platz 1' },
-                { id: 'platz2', name: 'Platz 2' },
-                { id: 'platz3', name: 'Platz 3' },
-                { id: 'grundschule', name: 'Grundschule' },
-                { id: 'kunstrasen', name: 'Kunstrasen' }
+                { id: 'platz1', name: 'Platz 1', color: 'bg-red-50 border-red-200', headerColor: 'bg-red-500' },
+                { id: 'platz2', name: 'Platz 2', color: 'bg-blue-50 border-blue-200', headerColor: 'bg-blue-500' },
+                { id: 'platz3', name: 'Platz 3', color: 'bg-green-50 border-green-200', headerColor: 'bg-green-500' },
+                { id: 'grundschule', name: 'Grundschule', color: 'bg-yellow-50 border-yellow-200', headerColor: 'bg-yellow-500' },
+                { id: 'kunstrasen', name: 'Kunstrasen', color: 'bg-purple-50 border-purple-200', headerColor: 'bg-purple-500' }
             ];
 
             const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
@@ -45,11 +45,11 @@
             ];
 
             const eventTypes = {
-                training: { label: 'Training', color: 'bg-green-100 text-green-800', icon: '🏃‍♂️' },
-                match: { label: 'Pflichtspiel', color: 'bg-blue-100 text-blue-800', icon: '⚽' },
-                friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-100 text-yellow-800', icon: '🤝' },
-                cup: { label: 'Pokalspiel', color: 'bg-purple-100 text-purple-800', icon: '🏆' },
-                makeup: { label: 'Nachholspiel', color: 'bg-red-100 text-red-800', icon: '🔄' }
+                training: { label: 'Training', color: 'bg-green-500', icon: '🏃‍♂️' },
+                match: { label: 'Pflichtspiel', color: 'bg-blue-500', icon: '⚽' },
+                friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-500', icon: '🤝' },
+                cup: { label: 'Pokalspiel', color: 'bg-purple-500', icon: '🏆' },
+                makeup: { label: 'Nachholspiel', color: 'bg-red-500', icon: '🔄' }
             };
 
             const [newEvent, setNewEvent] = useState({
@@ -88,6 +88,41 @@
                 const hours = Math.floor(endTime);
                 const minutes = (endTime - hours) * 60;
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            };
+
+            // Hilfsfunktion für Event-Positionierung
+            const getEventPositions = (day) => {
+                const dayEvents = events.filter(e => e.day === day);
+                const positions = [];
+                
+                dayEvents.forEach(event => {
+                    const startIndex = timeSlots.indexOf(event.time);
+                    if (startIndex === -1) return;
+                    
+                    const endIndex = startIndex + Math.ceil(event.duration * 2); // 30min pro Slot
+                    let column = 0;
+                    
+                    // Finde eine freie Spalte für das Event
+                    while (true) {
+                        const conflict = positions.find(pos => 
+                            pos.column === column &&
+                            pos.startIndex < endIndex &&
+                            pos.endIndex > startIndex
+                        );
+                        
+                        if (!conflict) break;
+                        column++;
+                    }
+                    
+                    positions.push({
+                        ...event,
+                        column,
+                        startIndex,
+                        endIndex
+                    });
+                });
+                
+                return positions;
             };
 
             const addNotification = (message, type = 'info') => {
@@ -308,40 +343,52 @@
                                 ))}
                                 
                                 {/* Event Blöcke */}
-                                {weekdays.map((day, dayIndex) => 
-                                    events.filter(e => e.day === day).map(event => {
-                                        const eventType = eventTypes[event.type];
-                                        const field = fields.find(f => f.id === event.field);
-                                        const startIndex = timeSlots.indexOf(event.time);
-                                        if (startIndex === -1) return null;
+                                {weekdays.map((day, dayIndex) => {
+                                    const eventPositions = getEventPositions(day);
+                                    const maxColumns = Math.max(1, ...eventPositions.map(pos => pos.column + 1));
+                                    
+                                    return eventPositions.map(eventPos => {
+                                        const eventType = eventTypes[eventPos.type];
+                                        const field = fields.find(f => f.id === eventPos.field);
                                         
-                                        const topPos = startIndex * 60 + 4;
-                                        const height = Math.max(50, event.duration * 120);
+                                        const topPos = eventPos.startIndex * 60 + 4;
+                                        const height = Math.max(50, eventPos.duration * 120);
                                         const leftPos = (dayIndex + 1) * 12.5;
+                                        const columnWidth = 11 / maxColumns;
+                                        const eventLeft = leftPos + (eventPos.column * columnWidth);
                                         
                                         return (
                                             <div
-                                                key={event.id}
-                                                className={`${eventType.color} border-l-4 border-green-400 rounded p-2 text-xs cursor-pointer hover:shadow-md transition-shadow absolute z-10`}
+                                                key={eventPos.id}
+                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs`}
                                                 style={{ 
                                                     top: `${topPos}px`,
-                                                    left: `${leftPos}%`,
-                                                    width: '11%',
+                                                    left: `${eventLeft}%`,
+                                                    width: `${columnWidth}%`,
                                                     height: `${height}px`
                                                 }}
-                                                onClick={() => setEditingEvent({...event})}
+                                                onClick={() => setEditingEvent({...eventPos})}
                                             >
-                                                <div className="font-semibold">{eventType.icon} {event.team}</div>
-                                                <div className="opacity-75 text-xs">{field?.name}</div>
-                                                <div className="opacity-75 text-xs font-medium">{event.time} - {getEventEndTime(event)}</div>
-                                                {event.cabin && <div className="opacity-75 text-xs">🚪 {event.cabin}</div>}
-                                                {event.trainer && <div className="opacity-75 text-xs">👨‍🏫 {event.trainer}</div>}
-                                                {event.position && <div className="opacity-75 text-xs">📍 {positions.find(p => p.value === event.position)?.label}</div>}
-                                                {event.isSeriesEvent && <div className="opacity-75 text-xs">🔄</div>}
+                                                {/* Typ-Header */}
+                                                <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t font-medium flex items-center gap-1`}>
+                                                    <span>{eventType.icon}</span>
+                                                    <span className="truncate">{eventType.label}</span>
+                                                </div>
+                                                
+                                                {/* Event Content */}
+                                                <div className="p-2">
+                                                    <div className="font-semibold text-gray-800 truncate">{eventPos.team}</div>
+                                                    <div className="text-gray-600 text-xs truncate">{field?.name}</div>
+                                                    <div className="text-gray-600 text-xs font-medium">{eventPos.time} - {getEventEndTime(eventPos)}</div>
+                                                    {eventPos.cabin && <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>}
+                                                    {eventPos.trainer && <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>}
+                                                    {eventPos.position && <div className="text-gray-600 text-xs">📍 {positions.find(p => p.value === eventPos.position)?.label}</div>}
+                                                    {eventPos.isSeriesEvent && <div className="text-gray-600 text-xs">🔄</div>}
+                                                </div>
                                             </div>
                                         );
-                                    })
-                                )}
+                                    });
+                                })}
                             </div>
                         </div>
                     )}
@@ -367,14 +414,23 @@
                                                 const eventType = eventTypes[event.type];
                                                 const field = fields.find(f => f.id === event.field);
                                                 return (
-                                                    <div key={event.id} className={`${eventType.color} border rounded p-2 text-xs cursor-pointer hover:shadow transition-shadow`} onClick={() => setEditingEvent({...event})}>
-                                                        <div className="font-semibold">{event.time} - {getEventEndTime(event)}</div>
-                                                        <div className="font-semibold">{eventType.icon} {event.team}</div>
-                                                        <div>{field?.name}</div>
-                                                        {event.trainer && <div>👨‍🏫 {event.trainer}</div>}
-                                                        {event.cabin && <div>🚪 {event.cabin}</div>}
-                                                        {event.position && <div>📍 {positions.find(p => p.value === event.position)?.label}</div>}
-                                                        {event.isSeriesEvent && <div>🔄 Serie</div>}
+                                                    <div key={event.id} className={`${field?.color} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow`} onClick={() => setEditingEvent({...event})}>
+                                                        {/* Typ-Header */}
+                                                        <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t-lg font-medium flex items-center gap-1`}>
+                                                            <span>{eventType.icon}</span>
+                                                            <span className="truncate">{eventType.label}</span>
+                                                        </div>
+                                                        
+                                                        {/* Event Content */}
+                                                        <div className="p-2">
+                                                            <div className="font-semibold text-gray-800">{event.time} - {getEventEndTime(event)}</div>
+                                                            <div className="font-semibold text-gray-800">{event.team}</div>
+                                                            <div className="text-gray-600">{field?.name}</div>
+                                                            {event.trainer && <div className="text-gray-600">👨‍🏫 {event.trainer}</div>}
+                                                            {event.cabin && <div className="text-gray-600">🚪 {event.cabin}</div>}
+                                                            {event.position && <div className="text-gray-600">📍 {positions.find(p => p.value === event.position)?.label}</div>}
+                                                            {event.isSeriesEvent && <div className="text-gray-600">🔄 Serie</div>}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
@@ -392,10 +448,20 @@
                         <h3 className="font-medium mb-2 text-sm">Legende</h3>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                             {Object.entries(eventTypes).map(([key, type]) => (
-                                <div key={key} className={`${type.color} border rounded p-2 text-center text-xs`}>
+                                <div key={key} className={`${type.color} text-white border rounded p-2 text-center text-xs font-medium`}>
                                     {type.icon} {type.label}
                                 </div>
                             ))}
+                        </div>
+                        <div className="mt-3">
+                            <h4 className="font-medium mb-2 text-sm">Plätze</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                {fields.map(field => (
+                                    <div key={field.id} className={`${field.color} border rounded p-2 text-center text-xs font-medium text-gray-700`}>
+                                        {field.name}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
