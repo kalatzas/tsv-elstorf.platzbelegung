@@ -381,15 +381,16 @@
                                         
                                         const topPos = eventPos.startIndex * 60 + 4;
                                         const height = Math.max(50, eventPos.duration * 120);
-                                        const leftPos = 80 + (dayIndex * 160) + 8; // Feste Pixel-Werte für bessere Kontrolle
+                                        const leftPos = 80 + (dayIndex * 160) + 4; // Start der Tagesspalte + kleiner Abstand
+                                        const availableWidth = 152; // 160px - 8px padding (4px links + 4px rechts)
                                         
                                         // Berechne Position innerhalb der Spalte basierend auf Platz-Position
                                         let eventLeft = leftPos;
-                                        let eventWidth = 144; // Volle Tagesbreite nutzen
+                                        let eventWidth = availableWidth; // Nutze die VOLLE verfügbare Breite
                                         
                                         // Bei mehreren Spalten (verschiedene Plätze) verteilen
                                         if (maxColumns > 1) {
-                                            const columnWidth = 144 / maxColumns;
+                                            const columnWidth = availableWidth / maxColumns;
                                             eventLeft = leftPos + (eventPos.column * columnWidth);
                                             eventWidth = columnWidth - 4; // Kleiner Abstand zwischen Spalten
                                             
@@ -402,7 +403,7 @@
                                         } else {
                                             // Nur eine Spalte - Events auf gleichem Platz teilen sich die volle Breite
                                             if (eventPos.groupSize > 1) {
-                                                const subWidth = 144 / eventPos.groupSize;
+                                                const subWidth = availableWidth / eventPos.groupSize;
                                                 eventLeft += eventPos.positionInGroup * subWidth;
                                                 eventWidth = subWidth - 2;
                                             }
