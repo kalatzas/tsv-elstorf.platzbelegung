@@ -341,10 +341,10 @@
                     {/* Tabellenansicht */}
                     {viewMode === 'table' && (
                         <div className="bg-white rounded-lg shadow overflow-x-auto">
-                            <div className="grid grid-cols-8 gap-0 border-b min-w-[1200px]">
-                                <div className="p-3 bg-gray-100 font-medium text-sm w-20">Zeit</div>
+                            <div className="flex border-b min-w-[1200px]">
+                                <div className="w-20 p-3 bg-gray-100 font-medium text-sm border-r">Zeit</div>
                                 {getWeekDates(currentWeek).map(({ day, date, month }) => (
-                                    <div key={day} className="p-3 bg-gray-100 font-medium text-center text-sm min-w-[160px]">
+                                    <div key={day} className="w-40 p-3 bg-gray-100 font-medium text-center text-sm border-r">
                                         <div>{day}</div>
                                         <div className="text-xs text-gray-600">{date}.{month}</div>
                                     </div>
@@ -353,10 +353,10 @@
 
                             <div className="relative">
                                 {timeSlots.map(time => (
-                                    <div key={time} className="grid grid-cols-8 gap-0 border-b min-h-[60px] min-w-[1200px]">
-                                        <div className="p-3 bg-gray-50 border-r flex items-center text-sm font-medium w-20">{time}</div>
+                                    <div key={time} className="flex border-b min-h-[60px] min-w-[1200px]">
+                                        <div className="w-20 p-3 bg-gray-50 border-r flex items-center text-sm font-medium">{time}</div>
                                         {weekdays.map(day => (
-                                            <div key={day} className="border-r p-2 relative min-w-[160px]">
+                                            <div key={day} className="w-40 border-r p-2 relative">
                                                 {!events.some(e => e.day === day && e.time === time) && (
                                                     <div
                                                         className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
@@ -382,27 +382,26 @@
                                         const topPos = eventPos.startIndex * 60 + 4;
                                         const height = Math.max(50, eventPos.duration * 120);
                                         
-                                        // Korrekte Berechnung der Tagesposition
-                                        const timeColumnWidth = 80; // Breite der Zeitspalte
-                                        const dayColumnWidth = 160; // Breite jeder Tagesspalte
-                                        const dayStartPos = timeColumnWidth + (dayIndex * dayColumnWidth);
-                                        const dayPadding = 4;
-                                        const availableWidth = dayColumnWidth - (dayPadding * 2); // 152px verfügbar
+                                        // Einfache und klare Positionierung
+                                        const timeColumnWidth = 80; // w-20 = 80px
+                                        const dayColumnWidth = 160; // w-40 = 160px  
+                                        const dayStartX = timeColumnWidth + (dayIndex * dayColumnWidth);
+                                        const availableWidth = dayColumnWidth - 8; // 8px padding (4px links + 4px rechts)
                                         
-                                        let eventLeft = dayStartPos + dayPadding;
+                                        let eventLeft = dayStartX + 4; // 4px padding von links
                                         let eventWidth = availableWidth;
                                         
                                         // Bei mehreren Spalten (verschiedene Plätze) verteilen
                                         if (maxColumns > 1) {
                                             const columnWidth = availableWidth / maxColumns;
-                                            eventLeft = dayStartPos + dayPadding + (eventPos.column * columnWidth);
-                                            eventWidth = columnWidth - 4; // Kleiner Abstand zwischen Spalten
+                                            eventLeft = dayStartX + 4 + (eventPos.column * columnWidth);
+                                            eventWidth = columnWidth - 4;
                                             
                                             // Sub-Position für gleichen Platz zur gleichen Zeit
                                             if (eventPos.groupSize > 1) {
                                                 const subWidth = columnWidth / eventPos.groupSize;
                                                 eventLeft += eventPos.positionInGroup * subWidth;
-                                                eventWidth = subWidth - 2; // Noch kleinerer Abstand zwischen Events
+                                                eventWidth = subWidth - 2;
                                             }
                                         } else {
                                             // Nur eine Spalte - Events auf gleichem Platz teilen sich die volle Breite
@@ -411,11 +410,6 @@
                                                 eventLeft += eventPos.positionInGroup * subWidth;
                                                 eventWidth = subWidth - 2;
                                             }
-                                        }
-                                        
-                                        // Debug-Log für Positionierung
-                                        if (eventPos.day === 'Dienstag') {
-                                            console.log(`Event ${eventPos.team}: dayIndex=${dayIndex}, dayStartPos=${dayStartPos}, eventLeft=${eventLeft}, eventWidth=${eventWidth}`);
                                         }
                                         
                                         // Position-Indikator
