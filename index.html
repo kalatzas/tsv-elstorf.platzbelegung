@@ -11,7 +11,450 @@ const App = () => {
     const [currentWeek, setCurrentWeek] = useState(0);
     
     const fields = [
-        { id: 'platz1', name: 'Platz 1' },
+        { id: 'platz1', name: 'Platz 1' },<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platzbelegungsplaner</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const App = () => {
+            const [events, setEvents] = useState([]);
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [showExportModal, setShowExportModal] = useState(false);
+            const [showSeriesModal, setShowSeriesModal] = useState(false);
+            const [notifications, setNotifications] = useState([]);
+            const [viewMode, setViewMode] = useState('table');
+            const [currentWeek, setCurrentWeek] = useState(0);
+            
+            const fields = [
+                { id: 'platz1', name: 'Platz 1' },
+                { id: 'platz2', name: 'Platz 2' },
+                { id: 'platz3', name: 'Platz 3' },
+                { id: 'grundschule', name: 'Grundschule' },
+                { id: 'kunstrasen', name: 'Kunstrasen' }
+            ];
+
+            const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
+            const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+            const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
+            const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
+            const positions = [
+                { value: '', label: 'Keine Angabe' },
+                { value: 'li', label: 'Links' },
+                { value: 'mi', label: 'Mitte' },
+                { value: 're', label: 'Rechts' }
+            ];
+
+            const eventTypes = {
+                training: { label: 'Training', color: 'bg-green-100 text-green-800', icon: '🏃‍♂️' },
+                match: { label: 'Pflichtspiel', color: 'bg-blue-100 text-blue-800', icon: '⚽' },
+                friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-100 text-yellow-800', icon: '🤝' },
+                cup: { label: 'Pokalspiel', color: 'bg-purple-100 text-purple-800', icon: '🏆' },
+                makeup: { label: 'Nachholspiel', color: 'bg-red-100 text-red-800', icon: '🔄' }
+            };
+
+            const [newEvent, setNewEvent] = useState({
+                field: '', day: '', time: '', duration: 1.5, type: 'training',
+                team: '', title: '', cabin: '', trainer: '', position: ''
+            });
+
+            const [seriesEvent, setSeriesEvent] = useState({
+                field: '', day: '', time: '', duration: 1.5, type: 'training',
+                team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
+            });
+
+            // Hilfsfunktionen
+            const getWeekStart = (weekOffset = 0) => {
+                const today = new Date();
+                const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
+                const monday = new Date(today);
+                monday.setDate(today.getDate() - daysToMonday + (weekOffset * 7));
+                return monday;
+            };
+
+            const formatDate = (date) => date.toLocaleDateString('de-DE');
+
+            const getWeekDates = (weekOffset = 0) => {
+                const weekStart = getWeekStart(weekOffset);
+                return weekdays.map((day, index) => {
+                    const date = new Date(weekStart);
+                    date.setDate(weekStart.getDate() + index);
+                    return { day, date: date.getDate(), month: date.getMonth() + 1 };
+                });
+            };
+
+            const getEventEndTime = (event) => {
+                const startTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
+                const endTime = startTime + event.duration;
+                const hours = Math.floor(endTime);
+                const minutes = (endTime - hours) * 60;
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            };
+
+            const addNotification = (message, type = 'info') => {
+                const notification = { id: Date.now(), message, type };
+                setNotifications(prev => [notification, ...prev.slice(0, 2)]);
+                setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== notification.id)), 30000);
+            };
+
+            const removeNotification = (id) => {
+                setNotifications(prev => prev.filter(n => n.id !== id));
+            };
+
+            // Persistenz
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem('football-events');
+                    if (saved) {
+                        setEvents(JSON.parse(saved));
+                    } else {
+                        const examples = [
+                            { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' }
+                        ];
+                        setEvents(examples);
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }, []);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('football-events', JSON.stringify(events));
+                } catch (e) {
+                    console.error(e);
+                }
+            }, [events]);
+
+            const addEvent = () => {
+                if (!newEvent.field || !newEvent.day || !newEvent.time || !newEvent.team || !newEvent.title) {
+                    alert('Bitte alle Pflichtfelder ausfüllen!');
+                    return;
+                }
+                setEvents([...events, { ...newEvent, id: Date.now() }]);
+                setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '' });
+                setShowAddModal(false);
+                addNotification('✅ Termin hinzugefügt', 'success');
+            };
+
+            const updateEvent = () => {
+                setEvents(events.map(e => e.id === editingEvent.id ? editingEvent : e));
+                setEditingEvent(null);
+                addNotification('✏️ Termin aktualisiert', 'success');
+            };
+
+            const deleteEvent = (id) => {
+                if (confirm('Termin löschen?')) {
+                    setEvents(events.filter(e => e.id !== id));
+                    addNotification('🗑️ Termin gelöscht', 'info');
+                }
+            };
+
+            const createSeriesEvents = () => {
+                if (!seriesEvent.field || !seriesEvent.day || !seriesEvent.time || !seriesEvent.team || !seriesEvent.title) {
+                    alert('Bitte alle Pflichtfelder ausfüllen!');
+                    return;
+                }
+                const newEvents = [];
+                for (let week = 0; week < seriesEvent.weeks; week++) {
+                    newEvents.push({ ...seriesEvent, id: Date.now() + week, isSeriesEvent: true });
+                }
+                setEvents(prev => [...prev, ...newEvents]);
+                setSeriesEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10 });
+                setShowSeriesModal(false);
+                addNotification(`📅 ${newEvents.length} Serientermine erstellt`, 'success');
+            };
+
+            const exportToCSV = () => {
+                const csv = events.map(e => [
+                    fields.find(f => f.id === e.field)?.name,
+                    e.day, e.time, e.duration, eventTypes[e.type].label,
+                    e.team, e.title, e.trainer, e.cabin, e.position
+                ].join(',')).join('\n');
+                
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'termine.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                addNotification('📥 CSV exportiert', 'success');
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto p-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">FC</div>
+                            <div>
+                                <h1 className="text-2xl font-bold">Platzbelegungsplaner</h1>
+                                <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                            <div className="flex bg-gray-100 rounded p-1">
+                                <button onClick={() => setViewMode('table')} className={`px-2 py-1 rounded text-sm ${viewMode === 'table' ? 'bg-white shadow' : ''}`}>📊</button>
+                                <button onClick={() => setViewMode('calendar')} className={`px-2 py-1 rounded text-sm ${viewMode === 'calendar' ? 'bg-white shadow' : ''}`}>📅</button>
+                            </div>
+                            <button onClick={() => setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm">Serie</button>
+                            <button onClick={() => setShowExportModal(true)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Export</button>
+                            <button onClick={() => setShowAddModal(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">+ Hinzufügen</button>
+                        </div>
+                    </div>
+
+                    {/* Wochennavigation */}
+                    <div className="mb-4 flex items-center justify-between bg-white rounded shadow p-3">
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => setCurrentWeek(p => p - 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm">←</button>
+                            <span className="font-medium text-sm">Woche vom {formatDate(getWeekStart(currentWeek))}</span>
+                            <button onClick={() => setCurrentWeek(p => p + 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm">→</button>
+                        </div>
+                        <button onClick={() => setCurrentWeek(0)} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Aktuelle Woche</button>
+                    </div>
+
+                    {/* Tabellenansicht */}
+                    {viewMode === 'table' && (
+                        <div className="bg-white rounded shadow overflow-x-auto">
+                            <div className="grid grid-cols-8 gap-0 border-b min-w-[800px]">
+                                <div className="p-3 bg-gray-100 font-medium text-sm">Zeit</div>
+                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
+                                    <div key={day} className="p-3 bg-gray-100 font-medium text-center text-sm">
+                                        <div>{day}</div>
+                                        <div className="text-xs text-gray-600">{date}.{month}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="relative">
+                                {timeSlots.map(time => (
+                                    <div key={time} className="grid grid-cols-8 gap-0 border-b min-h-[60px] min-w-[800px]">
+                                        <div className="p-3 bg-gray-50 border-r flex items-center text-sm">{time}</div>
+                                        {weekdays.map(day => (
+                                            <div key={day} className="border-r p-2 relative">
+                                                {!events.some(e => e.day === day && e.time === time) && (
+                                                    <div
+                                                        className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-center"
+                                                        onClick={() => { setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
+                                                    >
+                                                        +
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                                
+                                {/* Event Blöcke */}
+                                {weekdays.map((day, dayIndex) => 
+                                    events.filter(e => e.day === day).map(event => {
+                                        const eventType = eventTypes[event.type];
+                                        const field = fields.find(f => f.id === event.field);
+                                        const startIndex = timeSlots.indexOf(event.time);
+                                        if (startIndex === -1) return null;
+                                        
+                                        const topPos = startIndex * 60 + 4;
+                                        const height = Math.max(50, event.duration * 60);
+                                        const leftPos = (dayIndex + 1) * 12.5;
+                                        
+                                        return (
+                                            <div
+                                                key={event.id}
+                                                className={`${eventType.color} border-l-4 border-green-400 rounded p-2 text-xs cursor-pointer hover:shadow absolute z-10`}
+                                                style={{ 
+                                                    top: `${topPos}px`,
+                                                    left: `${leftPos}%`,
+                                                    width: '11%',
+                                                    height: `${height}px`
+                                                }}
+                                                onClick={() => setEditingEvent({...event})}
+                                            >
+                                                <div className="font-semibold">{eventType.icon} {event.team}</div>
+                                                <div className="opacity-75 text-xs">{field?.name}</div>
+                                                <div className="opacity-75 text-xs font-medium">{event.time} - {getEventEndTime(event)}</div>
+                                                <div className="opacity-75 text-xs">🚪 {event.cabin}</div>
+                                                <div className="opacity-75 text-xs">👨‍🏫 {event.trainer}</div>
+                                                {event.position && <div className="opacity-75 text-xs">📍 {positions.find(p => p.value === event.position)?.label}</div>}
+                                                {event.isSeriesEvent && <div className="opacity-75 text-xs">🔄</div>}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Kalenderansicht */}
+                    {viewMode === 'calendar' && (
+                        <div className="bg-white rounded shadow">
+                            <div className="grid grid-cols-7 border-b">
+                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
+                                    <div key={day} className="p-3 bg-gray-100 text-center border-r text-sm">
+                                        <div>{day}</div>
+                                        <div className="text-xs text-gray-600">{date}.{month}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-7 min-h-[400px]">
+                                {weekdays.map(day => (
+                                    <div key={day} className="border-r p-2 space-y-1">
+                                        {events.filter(e => e.day === day).sort((a, b) => a.time.localeCompare(b.time)).map(event => {
+                                            const eventType = eventTypes[event.type];
+                                            const field = fields.find(f => f.id === event.field);
+                                            return (
+                                                <div key={event.id} className={`${eventType.color} border rounded p-2 text-xs cursor-pointer hover:shadow`} onClick={() => setEditingEvent({...event})}>
+                                                    <div className="font-semibold">{event.time} - {getEventEndTime(event)}</div>
+                                                    <div className="font-semibold">{eventType.icon} {event.team}</div>
+                                                    <div>{field?.name}</div>
+                                                    <div>👨‍🏫 {event.trainer}</div>
+                                                    <div>🚪 {event.cabin}</div>
+                                                    {event.position && <div>📍 {positions.find(p => p.value === event.position)?.label}</div>}
+                                                    {event.isSeriesEvent && <div>🔄 Serie</div>}
+                                                </div>
+                                            );
+                                        })}
+                                        <div className="border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 text-xs" onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
+                                            + Hinzufügen
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Legende */}
+                    <div className="mt-4 bg-white rounded shadow p-4">
+                        <h3 className="font-medium mb-2 text-sm">Legende</h3>
+                        <div className="grid grid-cols-5 gap-2">
+                            {Object.entries(eventTypes).map(([key, type]) => (
+                                <div key={key} className={`${type.color} border rounded p-2 text-center text-xs`}>
+                                    {type.icon} {type.label}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Modals */}
+                    {showAddModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                                <h2 className="text-lg font-bold mb-3">Neuer Termin</h2>
+                                <div className="space-y-3">
+                                    <div><label className="block text-sm font-medium mb-1">Platz*</label><select value={newEvent.field} onChange={(e) => setNewEvent({...newEvent, field: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Tag*</label><select value={newEvent.day} onChange={(e) => setNewEvent({...newEvent, day: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{weekdays.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Zeit*</label><select value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{timeSlots.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Dauer (h)</label><input type="number" step="0.5" min="0.5" max="3" value={newEvent.duration} onChange={(e) => setNewEvent({...newEvent, duration: parseFloat(e.target.value)})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Typ*</label><select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value})} className="w-full border rounded p-2 text-sm">{Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Team*</label><select value={newEvent.team} onChange={(e) => setNewEvent({...newEvent, team: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Titel*</label><input type="text" value={newEvent.title} onChange={(e) => setNewEvent({...newEvent, title: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="z.B. U15 Training" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Trainer</label><input type="text" value={newEvent.trainer} onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Kabine</label><select value={newEvent.cabin} onChange={(e) => setNewEvent({...newEvent, cabin: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{cabins.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Position</label><select value={newEvent.position} onChange={(e) => setNewEvent({...newEvent, position: e.target.value})} className="w-full border rounded p-2 text-sm">{positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</select></div>
+                                </div>
+                                <div className="flex gap-2 mt-4">
+                                    <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-300 py-2 px-3 rounded text-sm">Abbrechen</button>
+                                    <button onClick={addEvent} className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm">Hinzufügen</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showSeriesModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                                <h2 className="text-lg font-bold mb-3">Serientermine</h2>
+                                <div className="space-y-3">
+                                    <div><label className="block text-sm font-medium mb-1">Platz*</label><select value={seriesEvent.field} onChange={(e) => setSeriesEvent({...seriesEvent, field: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Tag*</label><select value={seriesEvent.day} onChange={(e) => setSeriesEvent({...seriesEvent, day: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{weekdays.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Zeit*</label><select value={seriesEvent.time} onChange={(e) => setSeriesEvent({...seriesEvent, time: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{timeSlots.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Team*</label><select value={seriesEvent.team} onChange={(e) => setSeriesEvent({...seriesEvent, team: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Titel*</label><input type="text" value={seriesEvent.title} onChange={(e) => setSeriesEvent({...seriesEvent, title: e.target.value})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Trainer</label><input type="text" value={seriesEvent.trainer} onChange={(e) => setSeriesEvent({...seriesEvent, trainer: e.target.value})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Kabine</label><select value={seriesEvent.cabin} onChange={(e) => setSeriesEvent({...seriesEvent, cabin: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{cabins.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Position</label><select value={seriesEvent.position} onChange={(e) => setSeriesEvent({...seriesEvent, position: e.target.value})} className="w-full border rounded p-2 text-sm">{positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Wochen</label><input type="number" min="1" max="52" value={seriesEvent.weeks} onChange={(e) => setSeriesEvent({...seriesEvent, weeks: parseInt(e.target.value)})} className="w-full border rounded p-2 text-sm" /></div>
+                                </div>
+                                <div className="flex gap-2 mt-4">
+                                    <button onClick={() => setShowSeriesModal(false)} className="flex-1 bg-gray-300 py-2 px-3 rounded text-sm">Abbrechen</button>
+                                    <button onClick={createSeriesEvents} className="flex-1 bg-purple-600 text-white py-2 px-3 rounded text-sm">Erstellen</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {editingEvent && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                                <h2 className="text-lg font-bold mb-3">Termin bearbeiten</h2>
+                                <div className="space-y-3">
+                                    <div><label className="block text-sm font-medium mb-1">Platz</label><select value={editingEvent.field} onChange={(e) => setEditingEvent({...editingEvent, field: e.target.value})} className="w-full border rounded p-2 text-sm">{fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Tag</label><select value={editingEvent.day} onChange={(e) => setEditingEvent({...editingEvent, day: e.target.value})} className="w-full border rounded p-2 text-sm">{weekdays.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Zeit</label><select value={editingEvent.time} onChange={(e) => setEditingEvent({...editingEvent, time: e.target.value})} className="w-full border rounded p-2 text-sm">{timeSlots.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Dauer</label><input type="number" step="0.5" min="0.5" max="3" value={editingEvent.duration} onChange={(e) => setEditingEvent({...editingEvent, duration: parseFloat(e.target.value)})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Typ</label><select value={editingEvent.type} onChange={(e) => setEditingEvent({...editingEvent, type: e.target.value})} className="w-full border rounded p-2 text-sm">{Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Team</label><select value={editingEvent.team} onChange={(e) => setEditingEvent({...editingEvent, team: e.target.value})} className="w-full border rounded p-2 text-sm">{teams.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Titel</label><input type="text" value={editingEvent.title} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Trainer</label><input type="text" value={editingEvent.trainer} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded p-2 text-sm" /></div>
+                                    <div><label className="block text-sm font-medium mb-1">Kabine</label><select value={editingEvent.cabin} onChange={(e) => setEditingEvent({...editingEvent, cabin: e.target.value})} className="w-full border rounded p-2 text-sm"><option value="">Wählen</option>{cabins.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                    <div><label className="block text-sm font-medium mb-1">Position</label><select value={editingEvent.position || ''} onChange={(e) => setEditingEvent({...editingEvent, position: e.target.value})} className="w-full border rounded p-2 text-sm">{positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}</select></div>
+                                </div>
+                                <div className="flex gap-2 mt-4">
+                                    <button onClick={() => deleteEvent(editingEvent.id)} className="bg-red-600 text-white py-2 px-3 rounded text-sm">Löschen</button>
+                                    <button onClick={() => setEditingEvent(null)} className="flex-1 bg-gray-300 py-2 px-3 rounded text-sm">Abbrechen</button>
+                                    <button onClick={updateEvent} className="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm">Speichern</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showExportModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded p-4 max-w-md w-full">
+                                <h2 className="text-lg font-bold mb-3">Export</h2>
+                                <div className="space-y-3">
+                                    <button onClick={() => { exportToCSV(); setShowExportModal(false); }} className="w-full bg-green-600 text-white py-3 px-4 rounded">📄 CSV exportieren</button>
+                                    <button onClick={() => { window.print(); setShowExportModal(false); }} className="w-full bg-red-600 text-white py-3 px-4 rounded">🖨️ Drucken</button>
+                                    <button onClick={() => { if(confirm('Alle Termine löschen?')) { localStorage.removeItem('football-events'); setEvents([]); } setShowExportModal(false); }} className="w-full bg-red-600 text-white py-3 px-4 rounded">🗑️ Alles löschen</button>
+                                </div>
+                                <button onClick={() => setShowExportModal(false)} className="w-full bg-gray-300 py-2 px-3 rounded mt-4 text-sm">Schließen</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Notifications */}
+                    <div className="fixed top-4 right-4 space-y-2 z-40">
+                        {notifications.map(notification => (
+                            <div key={notification.id} className={`p-3 rounded shadow-lg relative ${
+                                notification.type === 'success' ? 'bg-green-100 text-green-800' :
+                                notification.type === 'warning' ? 'bg-orange-100 text-orange-800' :
+                                'bg-blue-100 text-blue-800'
+                            }`}>
+                                <button onClick={() => removeNotification(notification.id)} className="absolute top-1 right-1 text-gray-500 hover:text-gray-700">×</button>
+                                <div className="pr-6 text-sm">{notification.message}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
         { id: 'platz2', name: 'Platz 2' },
         { id: 'platz3', name: 'Platz 3' },
         { id: 'grundschule', name: 'Grundschule' },
