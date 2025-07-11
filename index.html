@@ -93,68 +93,43 @@
             // Hilfsfunktion für Event-Positionierung
             const getEventPositions = (day) => {
                 const dayEvents = events.filter(e => e.day === day);
-                
-                // Gruppiere Events nach Platz und Zeit, dann sortiere nach Position
-                const eventsByTimeAndField = {};
+                const positions = [];
                 
                 dayEvents.forEach(event => {
                     const startIndex = timeSlots.indexOf(event.time);
                     if (startIndex === -1) return;
                     
                     const endIndex = startIndex + Math.ceil(event.duration * 2); // 30min pro Slot
-                    const key = `${event.field}-${startIndex}`;
                     
-                    if (!eventsByTimeAndField[key]) {
-                        eventsByTimeAndField[key] = [];
-                    }
+                    // Finde andere Events zur gleichen Zeit auf dem gleichen Platz
+                    const sameTimeFieldEvents = dayEvents.filter(e => 
+                        e.time === event.time && 
+                        e.field === event.field &&
+                        timeSlots.indexOf(e.time) !== -1
+                    );
                     
-                    eventsByTimeAndField[key].push({
-                        ...event,
-                        startIndex,
-                        endIndex
-                    });
-                });
-                
-                // Sortiere Events innerhalb jeder Gruppe nach Position (links, mitte, rechts)
-                Object.keys(eventsByTimeAndField).forEach(key => {
-                    eventsByTimeAndField[key].sort((a, b) => {
+                    // Sortiere Events nach Position (links, mitte, rechts)
+                    sameTimeFieldEvents.sort((a, b) => {
                         const positionOrder = { 'li': 0, 'mi': 1, 're': 2, '': 3 };
                         return (positionOrder[a.position] || 3) - (positionOrder[b.position] || 3);
                     });
-                });
-                
-                const positions = [];
-                let globalColumn = 0;
-                
-                // Verarbeite alle Events und weise Spalten zu
-                dayEvents.forEach(event => {
-                    const startIndex = timeSlots.indexOf(event.time);
-                    if (startIndex === -1) return;
                     
-                    const endIndex = startIndex + Math.ceil(event.duration * 2);
-                    const key = `${event.field}-${startIndex}`;
-                    const groupEvents = eventsByTimeAndField[key];
+                    // Finde die Position dieses Events in der sortierten Liste
+                    const positionInGroup = sameTimeFieldEvents.findIndex(e => e.id === event.id);
+                    const groupSize = sameTimeFieldEvents.length;
                     
-                    // Finde Position des Events in der sortierten Gruppe
-                    const positionInGroup = groupEvents.findIndex(e => e.id === event.id);
-                    
-                    // Finde eine freie Spalte basierend auf Zeit-Konflikten
+                    // Berechne Spalte basierend auf Zeit-Konflikten mit anderen Plätzen
                     let column = 0;
                     while (true) {
                         const conflict = positions.find(pos => 
                             pos.column === column &&
                             pos.startIndex < endIndex &&
-                            pos.endIndex > startIndex
+                            pos.endIndex > startIndex &&
+                            pos.field !== event.field // Nur Konflikte mit anderen Plätzen
                         );
                         
                         if (!conflict) break;
                         column++;
-                    }
-                    
-                    // Wenn mehrere Events zur gleichen Zeit auf dem gleichen Platz,
-                    // verschiebe sie basierend auf ihrer Position
-                    if (groupEvents.length > 1) {
-                        column += positionInGroup * 0.33; // Verschiebe um 1/3 der Spaltenbreite
                     }
                     
                     positions.push({
@@ -163,7 +138,7 @@
                         startIndex,
                         endIndex,
                         positionInGroup,
-                        groupSize: groupEvents.length
+                        groupSize
                     });
                 });
                 
@@ -390,7 +365,7 @@
                                 {/* Event Blöcke */}
                                 {weekdays.map((day, dayIndex) => {
                                     const eventPositions = getEventPositions(day);
-                                    const maxColumns = Math.max(1, Math.ceil(Math.max(...eventPositions.map(pos => pos.column + 1), 0)));
+                                    const maxColumns = Math.max(1, ...eventPositions.map(pos => pos.column + 1));
                                     
                                     return eventPositions.map(eventPos => {
                                         const eventType = eventTypes[eventPos.type];
@@ -399,21 +374,20 @@
                                         const topPos = eventPos.startIndex * 60 + 4;
                                         const height = Math.max(50, eventPos.duration * 120);
                                         const leftPos = (dayIndex + 1) * 12.5;
+                                        const columnWidth = 11 / maxColumns;
                                         
-                                        // Berechne Breite basierend auf Gruppengröße
-                                        let columnWidth, eventLeft;
+                                        // Berechne Position innerhalb der Spalte basierend auf Platz-Position
+                                        let eventLeft = leftPos + (eventPos.column * columnWidth);
+                                        let eventWidth = columnWidth;
                                         
+                                        // Wenn mehrere Events auf dem gleichen Platz zur gleichen Zeit
                                         if (eventPos.groupSize > 1) {
-                                            // Events auf dem gleichen Platz zur gleichen Zeit teilen sich die Spalte
-                                            columnWidth = 11 / maxColumns / eventPos.groupSize;
-                                            eventLeft = leftPos + (Math.floor(eventPos.column) * (11 / maxColumns)) + (eventPos.positionInGroup * columnWidth);
-                                        } else {
-                                            // Normale Spaltenberechnung
-                                            columnWidth = 11 / maxColumns;
-                                            eventLeft = leftPos + (eventPos.column * columnWidth);
+                                            const subWidth = columnWidth / eventPos.groupSize;
+                                            eventLeft += eventPos.positionInGroup * subWidth;
+                                            eventWidth = subWidth;
                                         }
                                         
-                                        // Position-Indikator für bessere Sichtbarkeit
+                                        // Position-Indikator
                                         const positionIndicator = eventPos.position === 'li' ? '◀' : 
                                                                 eventPos.position === 'mi' ? '●' : 
                                                                 eventPos.position === 're' ? '▶' : '';
@@ -421,30 +395,31 @@
                                         return (
                                             <div
                                                 key={eventPos.id}
-                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs`}
+                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
                                                 style={{ 
                                                     top: `${topPos}px`,
                                                     left: `${eventLeft}%`,
-                                                    width: `${columnWidth}%`,
+                                                    width: `${eventWidth}%`,
                                                     height: `${height}px`
                                                 }}
                                                 onClick={() => setEditingEvent({...eventPos})}
                                             >
                                                 {/* Typ-Header */}
-                                                <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t font-medium flex items-center gap-1`}>
-                                                    <span>{eventType.icon}</span>
-                                                    <span className="truncate">{eventType.label}</span>
-                                                    {positionIndicator && <span className="ml-auto">{positionIndicator}</span>}
+                                                <div className={`${eventType.color} text-white text-xs px-1 py-1 rounded-t font-medium flex items-center justify-between`}>
+                                                    <div className="flex items-center gap-1 truncate">
+                                                        <span>{eventType.icon}</span>
+                                                        <span className="truncate">{eventType.label}</span>
+                                                    </div>
+                                                    {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
                                                 </div>
                                                 
                                                 {/* Event Content */}
-                                                <div className="p-2">
-                                                    <div className="font-semibold text-gray-800 truncate">{eventPos.team}</div>
+                                                <div className="p-1">
+                                                    <div className="font-semibold text-gray-800 text-xs truncate">{eventPos.team}</div>
                                                     <div className="text-gray-600 text-xs truncate">{field?.name}</div>
-                                                    <div className="text-gray-600 text-xs font-medium">{eventPos.time} - {getEventEndTime(eventPos)}</div>
+                                                    <div className="text-gray-600 text-xs">{eventPos.time} - {getEventEndTime(eventPos)}</div>
                                                     {eventPos.cabin && <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>}
                                                     {eventPos.trainer && <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>}
-                                                    {eventPos.position && <div className="text-gray-600 text-xs">📍 {positions.find(p => p.value === eventPos.position)?.label}</div>}
                                                     {eventPos.isSeriesEvent && <div className="text-gray-600 text-xs">🔄</div>}
                                                 </div>
                                             </div>
