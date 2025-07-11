@@ -100,14 +100,13 @@
                 setNotifications(prev => prev.filter(n => n.id !== id));
             };
 
-            // Persistenz mit localStorage (funktioniert auf GitHub Pages)
+            // Persistenz mit localStorage
             useEffect(() => {
                 try {
                     const saved = localStorage.getItem('football-events');
                     if (saved) {
                         setEvents(JSON.parse(saved));
                     } else {
-                        // Beispieldaten nur beim ersten Laden
                         const examples = [
                             { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
                             { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
@@ -117,7 +116,6 @@
                     }
                 } catch (e) {
                     console.error('Fehler beim Laden der Daten:', e);
-                    // Fallback zu Beispieldaten
                     const examples = [
                         { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' }
                     ];
@@ -125,7 +123,6 @@
                 }
             }, []);
 
-            // Daten automatisch speichern bei Änderungen
             useEffect(() => {
                 if (events.length > 0) {
                     try {
@@ -243,7 +240,6 @@
                     }
                 };
                 reader.readAsText(file);
-                // Input zurücksetzen
                 event.target.value = '';
             };
 
@@ -320,7 +316,7 @@
                                         if (startIndex === -1) return null;
                                         
                                         const topPos = startIndex * 60 + 4;
-                                        const height = Math.max(50, event.duration * 120); // 120px pro Stunde (60px pro 30min Slot)
+                                        const height = Math.max(50, event.duration * 120);
                                         const leftPos = (dayIndex + 1) * 12.5;
                                         
                                         return (
@@ -406,74 +402,158 @@
                     {/* Modal: Neuer Termin */}
                     {showAddModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                                <h2 className="text-lg font-bold mb-4">Neuer Termin</h2>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Platz *</label>
-                                        <select value={newEvent.field} onChange={(e) => setNewEvent({...newEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Tag *</label>
-                                        <select value={newEvent.day} onChange={(e) => setNewEvent({...newEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Zeit *</label>
-                                        <select value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Dauer (Stunden)</label>
-                                        <input type="number" step="0.5" min="0.5" max="3" value={seriesEvent.duration} onChange={(e) => setSeriesEvent({...seriesEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Typ *</label>
-                                        <select value={seriesEvent.type} onChange={(e) => setSeriesEvent({...seriesEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Team *</label>
-                                        <select value={seriesEvent.team} onChange={(e) => setSeriesEvent({...seriesEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Titel *</label>
-                                        <input type="text" value={seriesEvent.title} onChange={(e) => setSeriesEvent({...seriesEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="z.B. U15 Training" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Trainer</label>
-                                        <input type="text" value={seriesEvent.trainer} onChange={(e) => setSeriesEvent({...seriesEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Name des Trainers" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Kabine</label>
-                                        <select value={seriesEvent.cabin} onChange={(e) => setSeriesEvent({...seriesEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {cabins.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Position</label>
-                                        <select value={seriesEvent.position} onChange={(e) => setSeriesEvent({...seriesEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Anzahl Wochen</label>
-                                        <input type="number" min="1" max="52" value={seriesEvent.weeks} onChange={(e) => setSeriesEvent({...seriesEvent, weeks: parseInt(e.target.value) || 10})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+                                <div className="flex justify-between items-center p-6 border-b">
+                                    <h2 className="text-lg font-bold">Neuer Termin</h2>
+                                    <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Platz *</label>
+                                            <select value={newEvent.field} onChange={(e) => setNewEvent({...newEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Tag *</label>
+                                            <select value={newEvent.day} onChange={(e) => setNewEvent({...newEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Zeit *</label>
+                                            <select value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Dauer (Stunden)</label>
+                                            <input type="number" step="0.5" min="0.5" max="3" value={newEvent.duration} onChange={(e) => setNewEvent({...newEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Typ *</label>
+                                            <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Team *</label>
+                                            <select value={newEvent.team} onChange={(e) => setNewEvent({...newEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Titel *</label>
+                                            <input type="text" value={newEvent.title} onChange={(e) => setNewEvent({...newEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="z.B. U15 Training" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Trainer</label>
+                                            <input type="text" value={newEvent.trainer} onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="Name des Trainers" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Kabine</label>
+                                            <select value={newEvent.cabin} onChange={(e) => setNewEvent({...newEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {cabins.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Position</label>
+                                            <select value={newEvent.position} onChange={(e) => setNewEvent({...newEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-3 mt-6">
+                                <div className="flex gap-3 p-6 border-t bg-gray-50">
+                                    <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
+                                    <button onClick={addEvent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Hinzufügen</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal: Serientermine */}
+                    {showSeriesModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+                                <div className="flex justify-between items-center p-6 border-b">
+                                    <h2 className="text-lg font-bold">Serientermine</h2>
+                                    <button onClick={() => setShowSeriesModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Platz *</label>
+                                            <select value={seriesEvent.field} onChange={(e) => setSeriesEvent({...seriesEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Tag *</label>
+                                            <select value={seriesEvent.day} onChange={(e) => setSeriesEvent({...seriesEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Zeit *</label>
+                                            <select value={seriesEvent.time} onChange={(e) => setSeriesEvent({...seriesEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Dauer (Stunden)</label>
+                                            <input type="number" step="0.5" min="0.5" max="3" value={seriesEvent.duration} onChange={(e) => setSeriesEvent({...seriesEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Typ *</label>
+                                            <select value={seriesEvent.type} onChange={(e) => setSeriesEvent({...seriesEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Team *</label>
+                                            <select value={seriesEvent.team} onChange={(e) => setSeriesEvent({...seriesEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Titel *</label>
+                                            <input type="text" value={seriesEvent.title} onChange={(e) => setSeriesEvent({...seriesEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="z.B. U15 Training" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Trainer</label>
+                                            <input type="text" value={seriesEvent.trainer} onChange={(e) => setSeriesEvent({...seriesEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Name des Trainers" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Kabine</label>
+                                            <select value={seriesEvent.cabin} onChange={(e) => setSeriesEvent({...seriesEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {cabins.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Position</label>
+                                            <select value={seriesEvent.position} onChange={(e) => setSeriesEvent({...seriesEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                                {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Anzahl Wochen</label>
+                                            <input type="number" min="1" max="52" value={seriesEvent.weeks} onChange={(e) => setSeriesEvent({...seriesEvent, weeks: parseInt(e.target.value) || 10})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 p-6 border-t bg-gray-50">
                                     <button onClick={() => setShowSeriesModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
                                     <button onClick={createSeriesEvents} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Erstellen</button>
                                 </div>
@@ -484,66 +564,71 @@
                     {/* Modal: Termin bearbeiten */}
                     {editingEvent && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                                <h2 className="text-lg font-bold mb-4">Termin bearbeiten</h2>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Platz</label>
-                                        <select value={editingEvent.field} onChange={(e) => setEditingEvent({...editingEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Tag</label>
-                                        <select value={editingEvent.day} onChange={(e) => setEditingEvent({...editingEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Zeit</label>
-                                        <select value={editingEvent.time} onChange={(e) => setEditingEvent({...editingEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Dauer</label>
-                                        <input type="number" step="0.5" min="0.5" max="3" value={editingEvent.duration} onChange={(e) => setEditingEvent({...editingEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Typ</label>
-                                        <select value={editingEvent.type} onChange={(e) => setEditingEvent({...editingEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Team</label>
-                                        <select value={editingEvent.team} onChange={(e) => setEditingEvent({...editingEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Titel</label>
-                                        <input type="text" value={editingEvent.title} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Trainer</label>
-                                        <input type="text" value={editingEvent.trainer} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Kabine</label>
-                                        <select value={editingEvent.cabin} onChange={(e) => setEditingEvent({...editingEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {cabins.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Position</label>
-                                        <select value={editingEvent.position || ''} onChange={(e) => setEditingEvent({...editingEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                        </select>
+                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+                                <div className="flex justify-between items-center p-6 border-b">
+                                    <h2 className="text-lg font-bold">Termin bearbeiten</h2>
+                                    <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Platz</label>
+                                            <select value={editingEvent.field} onChange={(e) => setEditingEvent({...editingEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Tag</label>
+                                            <select value={editingEvent.day} onChange={(e) => setEditingEvent({...editingEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Zeit</label>
+                                            <select value={editingEvent.time} onChange={(e) => setEditingEvent({...editingEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Dauer</label>
+                                            <input type="number" step="0.5" min="0.5" max="3" value={editingEvent.duration} onChange={(e) => setEditingEvent({...editingEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Typ</label>
+                                            <select value={editingEvent.type} onChange={(e) => setEditingEvent({...editingEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Team</label>
+                                            <select value={editingEvent.team} onChange={(e) => setEditingEvent({...editingEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Titel</label>
+                                            <input type="text" value={editingEvent.title} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Trainer</label>
+                                            <input type="text" value={editingEvent.trainer} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Kabine</label>
+                                            <select value={editingEvent.cabin} onChange={(e) => setEditingEvent({...editingEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {cabins.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Position</label>
+                                            <select value={editingEvent.position || ''} onChange={(e) => setEditingEvent({...editingEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-3 mt-6">
+                                <div className="flex gap-3 p-6 border-t bg-gray-50">
                                     <button onClick={() => deleteEvent(editingEvent.id)} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Löschen</button>
                                     <button onClick={() => setEditingEvent(null)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
                                     <button onClick={updateEvent} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Speichern</button>
@@ -556,7 +641,10 @@
                     {showExportModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                             <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                                <h2 className="text-lg font-bold mb-4">Export & Verwaltung</h2>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-lg font-bold">Export & Verwaltung</h2>
+                                    <button onClick={() => setShowExportModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
                                 <div className="space-y-3">
                                     <button onClick={() => { exportToCSV(); setShowExportModal(false); }} className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         📄 CSV exportieren
@@ -587,7 +675,6 @@
                                         🗑️ Alles löschen
                                     </button>
                                 </div>
-                                <button onClick={() => setShowExportModal(false)} className="w-full bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md mt-4 text-sm transition-colors">Schließen</button>
                             </div>
                         </div>
                     )}
@@ -612,78 +699,4 @@
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
-</html>t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Dauer (Stunden)</label>
-                                        <input type="number" step="0.5" min="0.5" max="3" value={newEvent.duration} onChange={(e) => setNewEvent({...newEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Typ *</label>
-                                        <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Team *</label>
-                                        <select value={newEvent.team} onChange={(e) => setNewEvent({...newEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Titel *</label>
-                                        <input type="text" value={newEvent.title} onChange={(e) => setNewEvent({...newEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="z.B. U15 Training" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Trainer</label>
-                                        <input type="text" value={newEvent.trainer} onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="Name des Trainers" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Kabine</label>
-                                        <select value={newEvent.cabin} onChange={(e) => setNewEvent({...newEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {cabins.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Position</label>
-                                        <select value={newEvent.position} onChange={(e) => setNewEvent({...newEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                            {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="flex gap-3 mt-6">
-                                    <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
-                                    <button onClick={addEvent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Hinzufügen</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Modal: Serientermine */}
-                    {showSeriesModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                                <h2 className="text-lg font-bold mb-4">Serientermine</h2>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Platz *</label>
-                                        <select value={seriesEvent.field} onChange={(e) => setSeriesEvent({...seriesEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Tag *</label>
-                                        <select value={seriesEvent.day} onChange={(e) => setSeriesEvent({...seriesEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Zeit *</label>
-                                        <select value={seriesEvent.time} onChange={(e) => setSeriesEvent({...seriesEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                            <option value="">Wählen</option>
-                                            {timeSlots.map(t => <option key={t} value={
+</html>
