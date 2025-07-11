@@ -422,13 +422,36 @@
                                                 </div>
                                                 
                                                 {/* Event Content */}
-                                                <div className="p-1">
-                                                    <div className="font-semibold text-gray-800 text-xs truncate">{eventPos.team}</div>
-                                                    <div className="text-gray-600 text-xs truncate">{field?.name}</div>
-                                                    <div className="text-gray-600 text-xs">{eventPos.time} - {getEventEndTime(eventPos)}</div>
-                                                    {eventPos.cabin && <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>}
-                                                    {eventPos.trainer && <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>}
-                                                    {eventPos.isSeriesEvent && <div className="text-gray-600 text-xs">🔄</div>}
+                                                <div className="p-1 space-y-0.5">
+                                                    {/* Jugend und Titel */}
+                                                    <div className="font-bold text-gray-800 text-xs truncate">{eventPos.team}</div>
+                                                    <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>
+                                                    
+                                                    {/* Platz und Position */}
+                                                    <div className="text-gray-600 text-xs truncate">
+                                                        📍 {field?.name}
+                                                        {eventPos.position && ` (${positions.find(p => p.value === eventPos.position)?.label})`}
+                                                    </div>
+                                                    
+                                                    {/* Kabine */}
+                                                    {eventPos.cabin && (
+                                                        <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>
+                                                    )}
+                                                    
+                                                    {/* Start- und Endzeit */}
+                                                    <div className="text-gray-600 text-xs font-medium">
+                                                        🕐 {eventPos.time} - {getEventEndTime(eventPos)}
+                                                    </div>
+                                                    
+                                                    {/* Trainer */}
+                                                    {eventPos.trainer && (
+                                                        <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>
+                                                    )}
+                                                    
+                                                    {/* Serie-Indikator */}
+                                                    {eventPos.isSeriesEvent && (
+                                                        <div className="text-gray-500 text-xs">🔄 Serie</div>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
