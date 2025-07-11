@@ -212,6 +212,41 @@
                 addNotification('📥 CSV exportiert', 'success');
             };
 
+            const exportToJSON = () => {
+                const dataStr = JSON.stringify(events, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `termine_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                addNotification('💾 Backup erstellt', 'success');
+            };
+
+            const importFromJSON = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedEvents = JSON.parse(e.target.result);
+                        if (Array.isArray(importedEvents)) {
+                            setEvents(importedEvents);
+                            addNotification('📂 Daten importiert', 'success');
+                        } else {
+                            addNotification('❌ Ungültiges Dateiformat', 'warning');
+                        }
+                    } catch (error) {
+                        addNotification('❌ Fehler beim Importieren', 'warning');
+                    }
+                };
+                reader.readAsText(file);
+                // Input zurücksetzen
+                event.target.value = '';
+            };
+
             return (
                 <div className="max-w-7xl mx-auto p-4">
                     {/* Header */}
@@ -526,10 +561,29 @@
                                     <button onClick={() => { exportToCSV(); setShowExportModal(false); }} className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         📄 CSV exportieren
                                     </button>
-                                    <button onClick={() => { window.print(); setShowExportModal(false); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                    <button onClick={() => { exportToJSON(); setShowExportModal(false); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                        💾 Backup erstellen (JSON)
+                                    </button>
+                                    <div className="relative">
+                                        <input 
+                                            type="file" 
+                                            accept=".json" 
+                                            onChange={importFromJSON}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            id="import-file"
+                                        />
+                                        <label 
+                                            htmlFor="import-file" 
+                                            className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                                        >
+                                            📂 Backup importieren
+                                        </label>
+                                    </div>
+                                    <button onClick={() => { window.print(); setShowExportModal(false); }} className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         🖨️ Drucken
                                     </button>
-                                    <button onClick={() => { if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { setEvents([]); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                    <hr className="my-2" />
+                                    <button onClick={() => { if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { setEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         🗑️ Alles löschen
                                     </button>
                                 </div>
