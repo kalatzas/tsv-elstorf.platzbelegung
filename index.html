@@ -111,8 +111,16 @@
                     // Sortiere Events nach Position (links, mitte, rechts)
                     sameTimeFieldEvents.sort((a, b) => {
                         const positionOrder = { 'li': 0, 'mi': 1, 're': 2, '': 3 };
-                        return (positionOrder[a.position] || 3) - (positionOrder[b.position] || 3);
+                        const aOrder = positionOrder[a.position] !== undefined ? positionOrder[a.position] : 3;
+                        const bOrder = positionOrder[b.position] !== undefined ? positionOrder[b.position] : 3;
+                        return aOrder - bOrder;
                     });
+                    
+                    // Debug: Log die Reihenfolge
+                    if (sameTimeFieldEvents.length > 1) {
+                        console.log(`Events um ${event.time} auf ${event.field}:`, 
+                            sameTimeFieldEvents.map(e => `${e.team}(${e.position || 'keine'})`));
+                    }
                     
                     // Finde die Position dieses Events in der sortierten Liste
                     const positionInGroup = sameTimeFieldEvents.findIndex(e => e.id === event.id);
