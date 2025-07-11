@@ -385,24 +385,24 @@
                                         
                                         // Berechne Position innerhalb der Spalte basierend auf Platz-Position
                                         let eventLeft = leftPos;
-                                        let eventWidth = 144; // 160px - 16px padding
-                                        
-                                        // Wenn mehrere Events auf dem gleichen Platz zur gleichen Zeit
-                                        if (eventPos.groupSize > 1) {
-                                            const subWidth = 144 / eventPos.groupSize;
-                                            eventLeft += eventPos.positionInGroup * subWidth;
-                                            eventWidth = subWidth - 2; // Kleiner Abstand zwischen Events
-                                        }
+                                        let eventWidth = 144; // Volle Tagesbreite nutzen
                                         
                                         // Bei mehreren Spalten (verschiedene Plätze) verteilen
                                         if (maxColumns > 1) {
                                             const columnWidth = 144 / maxColumns;
                                             eventLeft = leftPos + (eventPos.column * columnWidth);
-                                            eventWidth = columnWidth - 2;
+                                            eventWidth = columnWidth - 4; // Kleiner Abstand zwischen Spalten
                                             
-                                            // Sub-Position für gleichen Platz
+                                            // Sub-Position für gleichen Platz zur gleichen Zeit
                                             if (eventPos.groupSize > 1) {
                                                 const subWidth = columnWidth / eventPos.groupSize;
+                                                eventLeft += eventPos.positionInGroup * subWidth;
+                                                eventWidth = subWidth - 2; // Noch kleinerer Abstand zwischen Events
+                                            }
+                                        } else {
+                                            // Nur eine Spalte - Events auf gleichem Platz teilen sich die volle Breite
+                                            if (eventPos.groupSize > 1) {
+                                                const subWidth = 144 / eventPos.groupSize;
                                                 eventLeft += eventPos.positionInGroup * subWidth;
                                                 eventWidth = subWidth - 2;
                                             }
