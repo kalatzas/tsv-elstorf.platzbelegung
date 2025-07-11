@@ -381,17 +381,21 @@
                                         
                                         const topPos = eventPos.startIndex * 60 + 4;
                                         const height = Math.max(50, eventPos.duration * 120);
-                                        const leftPos = 80 + (dayIndex * 160) + 4; // Start der Tagesspalte + kleiner Abstand
-                                        const availableWidth = 152; // 160px - 8px padding (4px links + 4px rechts)
                                         
-                                        // Berechne Position innerhalb der Spalte basierend auf Platz-Position
-                                        let eventLeft = leftPos;
-                                        let eventWidth = availableWidth; // Nutze die VOLLE verfügbare Breite
+                                        // Korrekte Berechnung der Tagesposition
+                                        const timeColumnWidth = 80; // Breite der Zeitspalte
+                                        const dayColumnWidth = 160; // Breite jeder Tagesspalte
+                                        const dayStartPos = timeColumnWidth + (dayIndex * dayColumnWidth);
+                                        const dayPadding = 4;
+                                        const availableWidth = dayColumnWidth - (dayPadding * 2); // 152px verfügbar
+                                        
+                                        let eventLeft = dayStartPos + dayPadding;
+                                        let eventWidth = availableWidth;
                                         
                                         // Bei mehreren Spalten (verschiedene Plätze) verteilen
                                         if (maxColumns > 1) {
                                             const columnWidth = availableWidth / maxColumns;
-                                            eventLeft = leftPos + (eventPos.column * columnWidth);
+                                            eventLeft = dayStartPos + dayPadding + (eventPos.column * columnWidth);
                                             eventWidth = columnWidth - 4; // Kleiner Abstand zwischen Spalten
                                             
                                             // Sub-Position für gleichen Platz zur gleichen Zeit
@@ -407,6 +411,11 @@
                                                 eventLeft += eventPos.positionInGroup * subWidth;
                                                 eventWidth = subWidth - 2;
                                             }
+                                        }
+                                        
+                                        // Debug-Log für Positionierung
+                                        if (eventPos.day === 'Dienstag') {
+                                            console.log(`Event ${eventPos.team}: dayIndex=${dayIndex}, dayStartPos=${dayStartPos}, eventLeft=${eventLeft}, eventWidth=${eventWidth}`);
                                         }
                                         
                                         // Position-Indikator
