@@ -100,14 +100,42 @@
                 setNotifications(prev => prev.filter(n => n.id !== id));
             };
 
-            // Beispieldaten laden (in-memory statt localStorage)
+            // Persistenz mit localStorage (funktioniert auf GitHub Pages)
             useEffect(() => {
-                const examples = [
-                    { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
-                    { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
-                ];
-                setEvents(examples);
+                try {
+                    const saved = localStorage.getItem('football-events');
+                    if (saved) {
+                        setEvents(JSON.parse(saved));
+                    } else {
+                        // Beispieldaten nur beim ersten Laden
+                        const examples = [
+                            { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
+                            { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
+                        ];
+                        setEvents(examples);
+                        localStorage.setItem('football-events', JSON.stringify(examples));
+                    }
+                } catch (e) {
+                    console.error('Fehler beim Laden der Daten:', e);
+                    // Fallback zu Beispieldaten
+                    const examples = [
+                        { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' }
+                    ];
+                    setEvents(examples);
+                }
             }, []);
+
+            // Daten automatisch speichern bei Änderungen
+            useEffect(() => {
+                if (events.length > 0) {
+                    try {
+                        localStorage.setItem('football-events', JSON.stringify(events));
+                    } catch (e) {
+                        console.error('Fehler beim Speichern der Daten:', e);
+                        addNotification('⚠️ Daten konnten nicht gespeichert werden', 'warning');
+                    }
+                }
+            }, [events]);
 
             const validateEvent = (event) => {
                 if (!event.field || !event.day || !event.time || !event.team || !event.title) {
