@@ -48,6 +48,27 @@
             }
         }
         
+        .notification-enter {
+            opacity: 0;
+            transform: translateX(100%);
+        }
+        
+        .notification-enter-active {
+            opacity: 1;
+            transform: translateX(0%);
+            transition: opacity 300ms, transform 300ms;
+        }
+        
+        .notification-exit {
+            opacity: 1;
+        }
+        
+        .notification-exit-active {
+            opacity: 0;
+            transform: translateX(100%);
+            transition: opacity 300ms, transform 300ms;
+        }
+        
         @media print {
             .no-print {
                 display: none !important;
@@ -259,6 +280,15 @@
                     timestamp: new Date().toLocaleTimeString()
                 };
                 setNotifications(prev => [notification, ...prev.slice(0, 4)]);
+                
+                // Automatisches Ausblenden nach 30 Sekunden
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                }, 30000);
+            };
+
+            const removeNotification = (id) => {
+                setNotifications(prev => prev.filter(n => n.id !== id));
             };
 
             // Persistenz
@@ -584,75 +614,78 @@
                                 ))}
                             </div>
 
-                            {timeSlots.map(time => (
-                                <div key={time} className="grid grid-cols-8 gap-0 border-b min-h-[80px] min-w-[800px]">
-                                    <div className="p-4 bg-gray-50 font-medium border-r flex items-center">
-                                        {time}
-                                    </div>
-                                    
-                                    {weekdays.map(day => (
-                                        <div key={day} className="border-r p-2 relative">
-                                            <div className="space-y-1">
-                                                {/* Events die zu dieser Zeit beginnen */}
-                                                {getEventsAtTime(day, time).filter(event => eventStartsAtTime(event, time)).map(event => {
-                                                    const eventType = eventTypes[event.type];
-                                                    const field = fields.find(f => f.id === event.field);
-                                                    
-                                                    return (
-                                                        <div
-                                                            key={event.id}
-                                                            className={`${eventType.color} border-l-4 border-green-400 rounded p-1 text-xs cursor-pointer hover:shadow-md transition-shadow`}
-                                                            onClick={() => setEditingEvent({...event})}
-                                                        >
-                                                            <div className="font-semibold">{eventType.icon} {event.team}</div>
-                                                            <div className="text-xs opacity-75">{field?.name}</div>
-                                                            <div className="text-xs opacity-75">
-                                                                {event.time} - {getEventEndTime(event)}
-                                                            </div>
-                                                            <div className="text-xs opacity-75">🚪 {event.cabin}</div>
-                                                            <div className="text-xs opacity-75">👨‍🏫 {event.trainer}</div>
-                                                            {event.position && (
-                                                                <div className="text-xs opacity-75">📍 {positions.find(p => p.value === event.position)?.label}</div>
-                                                            )}
-                                                            {event.isSeriesEvent && <div className="text-xs opacity-75">🔄 Serie</div>}
-                                                        </div>
-                                                    );
-                                                })}
-                                                
-                                                {/* Events die zu dieser Zeit laufen (aber nicht beginnen) */}
-                                                {getEventsAtTime(day, time).filter(event => eventRunsAtTime(event, time)).map(event => {
-                                                    const eventType = eventTypes[event.type];
-                                                    const field = fields.find(f => f.id === event.field);
-                                                    
-                                                    return (
-                                                        <div
-                                                            key={`running-${event.id}`}
-                                                            className={`${eventType.color} border-l-4 border-green-400 rounded p-1 text-xs cursor-pointer hover:shadow-md transition-shadow opacity-60`}
-                                                            onClick={() => setEditingEvent({...event})}
-                                                        >
-                                                            <div className="font-semibold text-center">⏱️ {event.team}</div>
-                                                            <div className="text-xs opacity-75 text-center">läuft...</div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            
-                                            {/* Klick zum Hinzufügen nur wenn keine Events laufen */}
-                                            {getEventsAtTime(day, time).length === 0 && (
-                                                <div
-                                                    className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center no-print"
-                                                    onClick={() => {
-                                                        setNewEvent({...newEvent, day: day, time: time});
-                                                        setShowAddModal(true);
-                                                    }}
-                                                >
-                                                    ➕
-                                                </div>
-                                            )}
+                            <div className="relative">
+                                {timeSlots.map(time => (
+                                    <div key={time} className="grid grid-cols-8 gap-0 border-b min-h-[80px] min-w-[800px]">
+                                        <div className="p-4 bg-gray-50 font-medium border-r flex items-center">
+                                            {time}
                                         </div>
-                                    ))}
-                                </div>
-                            ))}
+                                        
+                                        {weekdays.map(day => (
+                                            <div key={day} className="border-r p-2 relative">
+                                                {/* Klick zum Hinzufügen nur wenn keine Events laufen */}
+                                                {getEventsAtTime(day, time).length === 0 && (
+                                                    <div
+                                                        className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center no-print"
+                                                        onClick={() => {
+                                                            setNewEvent({...newEvent, day: day, time: time});
+                                                            setShowAddModal(true);
+                                                        }}
+                                                    >
+                                                        ➕
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                                
+                                {/* Events als absolute positionierte Blöcke */}
+                                {weekdays.map((day, dayIndex) => 
+                                    events
+                                        .filter(event => event.day === day)
+                                        .map(event => {
+                                            const eventType = eventTypes[event.type];
+                                            const field = fields.find(f => f.id === event.field);
+                                            
+                                            // Berechne Position
+                                            const startTimeIndex = timeSlots.indexOf(event.time);
+                                            const topPosition = startTimeIndex * 80 + 8; // 80px pro Zeitslot + 8px padding
+                                            const blockHeight = Math.max(60, event.duration * 80); // 80px pro Stunde
+                                            const leftPosition = (dayIndex + 1) * (100 / 8); // Prozentuale Position
+                                            const width = (100 / 8) - 0.5; // Breite einer Spalte minus Margin
+                                            
+                                            return (
+                                                <div
+                                                    key={event.id}
+                                                    className={`${eventType.color} border-l-4 border-green-400 rounded p-2 text-xs cursor-pointer hover:shadow-lg transition-shadow absolute z-10`}
+                                                    style={{ 
+                                                        top: `${topPosition}px`,
+                                                        left: `${leftPosition}%`,
+                                                        width: `${width}%`,
+                                                        height: `${blockHeight}px`,
+                                                        margin: '0 2px'
+                                                    }}
+                                                    onClick={() => setEditingEvent({...event})}
+                                                >
+                                                    <div className="font-semibold">{eventType.icon} {event.team}</div>
+                                                    <div className="text-xs opacity-75">{field?.name}</div>
+                                                    <div className="text-xs opacity-75 font-medium">
+                                                        {event.time} - {getEventEndTime(event)}
+                                                    </div>
+                                                    <div className="text-xs opacity-75">🚪 {event.cabin}</div>
+                                                    <div className="text-xs opacity-75">👨‍🏫 {event.trainer}</div>
+                                                    {event.position && (
+                                                        <div className="text-xs opacity-75">📍 {positions.find(p => p.value === event.position)?.label}</div>
+                                                    )}
+                                                    {event.isSeriesEvent && <div className="text-xs opacity-75">🔄 Serie</div>}
+                                                </div>
+                                            );
+                                        })
+                                )}
+                            </div>
+                        </div>
+                    )}
                         </div>
                     )}
 
@@ -1316,13 +1349,20 @@
                         {notifications.slice(0, 3).map(notification => (
                             <div
                                 key={notification.id}
-                                className={`p-3 rounded-lg border shadow-lg ${
+                                className={`p-3 rounded-lg border shadow-lg relative ${
                                     notification.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
                                     notification.type === 'warning' ? 'bg-orange-50 border-orange-200 text-orange-800' :
                                     'bg-blue-50 border-blue-200 text-blue-800'
                                 } transition-all duration-300`}
                             >
-                                <div className="font-medium">{notification.message}</div>
+                                <button
+                                    onClick={() => removeNotification(notification.id)}
+                                    className="absolute top-1 right-1 text-gray-500 hover:text-gray-700 text-lg leading-none"
+                                    title="Schließen"
+                                >
+                                    ×
+                                </button>
+                                <div className="font-medium pr-6">{notification.message}</div>
                                 <div className="text-sm opacity-75">{notification.timestamp}</div>
                             </div>
                         ))}
