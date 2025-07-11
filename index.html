@@ -1,55 +1,9 @@
-{/* Filter */}
-                    <div className="mb-4 bg-white rounded-lg shadow p-4">
-                        <h3 className="font-medium mb-3 text-sm">Filter</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs font-medium mb-1">Platz</label>
-                                <select 
-                                    value={filters.field} 
-                                    onChange={(e) => setFilters({...filters, field: e.target.value})}
-                                    className="w-full border rounded p-2 text-sm"
-                                >
-                                    <option value="">Alle Plätze</option>
-                                    {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium mb-1">Typ</label>
-                                <select 
-                                    value={filters.type} 
-                                    onChange={(e) => setFilters({...filters, type: e.target.value})}
-                                    className="w-full border rounded p-2 text-sm"
-                                >
-                                    <option value="">Alle Typen</option>
-                                    {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium mb-1">Jugend</label>
-                                <select 
-                                    value={filters.team} 
-                                    onChange={(e) => setFilters({...filters, team: e.target.value})}
-                                    className="w-full border rounded p-2 text-sm"
-                                >
-                                    <option value="">Alle Teams</option>
-                                    {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        {(filters.field || filters.type || filters.team) && (
-                            <button 
-                                onClick={() => setFilters({field: '', type: '', team: ''})}
-                                className="mt-2 text-xs text-blue-600 hover:text-blue-800"
-                            >
-                                Filter zurücksetzen
-                            </button>
-                        )}
-                    </div><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platzbelegungsplaner v1.0.1</title>
+    <title>Platzbelegungsplaner</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -108,17 +62,6 @@
                 team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
             });
 
-            // Filter State
-            const [filters, setFilters] = useState({
-                field: '',
-                type: '',
-                team: ''
-            });
-
-            // Hover State
-            const [hoveredEvent, setHoveredEvent] = useState(null);
-            const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
-
             // Hilfsfunktionen
             const getWeekStart = (weekOffset = 0) => {
                 const today = new Date();
@@ -147,23 +90,8 @@
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             };
 
-            // Filter-Events
-            const filteredEvents = events.filter(event => {
-                if (filters.field && event.field !== filters.field) return false;
-                if (filters.type && event.type !== filters.type) return false;
-                if (filters.team && event.team !== filters.team) return false;
-                return true;
-            });
-
-            // Hover-Handler
-            const handleEventHover = (event, mouseEvent) => {
-                setHoveredEvent(event);
-                setHoverPosition({ x: mouseEvent.clientX, y: mouseEvent.clientY });
-            };
-
-            const handleEventLeave = () => {
-                setHoveredEvent(null);
-            };
+            // Hilfsfunktion für Event-Positionierung
+            const getEventPositions = (day) => {
                 const dayEvents = events.filter(e => e.day === day);
                 const positions = [];
                 
@@ -387,7 +315,6 @@
                             <div>
                                 <h1 className="text-2xl font-bold">Platzbelegungsplaner</h1>
                                 <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung</p>
-                                <p className="text-gray-500 text-xs">Version 1.0.1</p>
                             </div>
                         </div>
                         <div className="flex gap-2 flex-wrap">
@@ -430,7 +357,7 @@
                                         <div className="w-20 p-3 bg-gray-50 border-r flex items-center text-sm font-medium">{time}</div>
                                         {weekdays.map(day => (
                                             <div key={day} className="w-40 border-r p-2 relative">
-                                                {!filteredEvents.some(e => e.day === day && e.time === time) && (
+                                                {!events.some(e => e.day === day && e.time === time) && (
                                                     <div
                                                         className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
                                                         onClick={() => { setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
@@ -485,13 +412,10 @@
                                             }
                                         }
                                         
-                                        // Position-Indikator mit besseren Icons
-                                        const positionIndicator = eventPos.position === 'li' ? '🔴' : 
-                                                                eventPos.position === 'mi' ? '🟡' : 
-                                                                eventPos.position === 're' ? '🔵' : '';
-                                        
-                                        // Verkürzte Anzeige bei kleinen Blöcken
-                                        const isSmall = eventWidth < 100;
+                                        // Position-Indikator
+                                        const positionIndicator = eventPos.position === 'li' ? '◀' : 
+                                                                eventPos.position === 'mi' ? '●' : 
+                                                                eventPos.position === 're' ? '▶' : '';
                                         
                                         return (
                                             <div
@@ -504,15 +428,12 @@
                                                     height: `${height}px`
                                                 }}
                                                 onClick={() => setEditingEvent({...eventPos})}
-                                                onMouseEnter={(e) => handleEventHover(eventPos, e)}
-                                                onMouseLeave={handleEventLeave}
-                                                onMouseMove={(e) => setHoverPosition({ x: e.clientX, y: e.clientY })}
                                             >
                                                 {/* Typ-Header */}
                                                 <div className={`${eventType.color} text-white text-xs px-1 py-1 rounded-t font-medium flex items-center justify-between`}>
                                                     <div className="flex items-center gap-1 truncate">
                                                         <span>{eventType.icon}</span>
-                                                        <span className="truncate">{isSmall ? eventType.label.substring(0, 4) : eventType.label}</span>
+                                                        <span className="truncate">{eventType.label}</span>
                                                     </div>
                                                     {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
                                                 </div>
@@ -521,35 +442,31 @@
                                                 <div className="p-1 space-y-0.5">
                                                     {/* Jugend und Titel */}
                                                     <div className="font-bold text-gray-800 text-xs truncate">{eventPos.team}</div>
-                                                    {!isSmall && <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>}
+                                                    <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>
                                                     
                                                     {/* Platz und Position */}
                                                     <div className="text-gray-600 text-xs truncate">
-                                                        📍 {isSmall ? 'P' : field?.name}
-                                                        {eventPos.position && ` (${isSmall ? 
-                                                            (eventPos.position === 'li' ? 'Li' : eventPos.position === 'mi' ? 'Mi' : 'Re') : 
-                                                            positions.find(p => p.value === eventPos.position)?.label})`}
+                                                        📍 {field?.name}
+                                                        {eventPos.position && ` (${positions.find(p => p.value === eventPos.position)?.label})`}
                                                     </div>
                                                     
                                                     {/* Kabine */}
-                                                    {eventPos.cabin && !isSmall && (
+                                                    {eventPos.cabin && (
                                                         <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>
                                                     )}
                                                     
                                                     {/* Start- und Endzeit */}
-                                                    {!isSmall && (
-                                                        <div className="text-gray-600 text-xs font-medium">
-                                                            🕐 {eventPos.time} - {getEventEndTime(eventPos)}
-                                                        </div>
-                                                    )}
+                                                    <div className="text-gray-600 text-xs font-medium">
+                                                        🕐 {eventPos.time} - {getEventEndTime(eventPos)}
+                                                    </div>
                                                     
                                                     {/* Trainer */}
-                                                    {eventPos.trainer && !isSmall && (
+                                                    {eventPos.trainer && (
                                                         <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>
                                                     )}
                                                     
                                                     {/* Serie-Indikator */}
-                                                    {eventPos.isSeriesEvent && !isSmall && (
+                                                    {eventPos.isSeriesEvent && (
                                                         <div className="text-gray-500 text-xs">🔄 Serie</div>
                                                     )}
                                                 </div>
@@ -577,12 +494,6 @@
                                     <div key={day} className="border-r p-2 space-y-1">
                                         {events
                                             .filter(e => e.day === day)
-                                            .filter(event => {
-                                                if (filters.field && event.field !== filters.field) return false;
-                                                if (filters.type && event.type !== filters.type) return false;
-                                                if (filters.team && event.team !== filters.team) return false;
-                                                return true;
-                                            })
                                             .sort((a, b) => a.time.localeCompare(b.time))
                                             .map(event => {
                                                 const eventType = eventTypes[event.type];
@@ -915,35 +826,6 @@
                                         🗑️ Alles löschen
                                     </button>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Hover Tooltip */}
-                    {hoveredEvent && (
-                        <div 
-                            className="fixed z-50 bg-white border rounded-lg shadow-lg p-3 text-sm max-w-xs pointer-events-none"
-                            style={{ 
-                                left: `${hoverPosition.x + 10}px`, 
-                                top: `${hoverPosition.y - 10}px`,
-                                transform: hoverPosition.x > window.innerWidth - 300 ? 'translateX(-100%)' : 'none'
-                            }}
-                        >
-                            <div className="space-y-1">
-                                <div className="font-bold text-gray-800 flex items-center gap-2">
-                                    <span className={`${eventTypes[hoveredEvent.type].color} text-white px-2 py-1 rounded text-xs`}>
-                                        {eventTypes[hoveredEvent.type].icon} {eventTypes[hoveredEvent.type].label}
-                                    </span>
-                                </div>
-                                <div className="font-bold text-lg">{hoveredEvent.team}</div>
-                                <div className="font-medium text-gray-700">{hoveredEvent.title}</div>
-                                <div className="text-gray-600">📍 {fields.find(f => f.id === hoveredEvent.field)?.name}
-                                    {hoveredEvent.position && ` (${positions.find(p => p.value === hoveredEvent.position)?.label})`}
-                                </div>
-                                <div className="text-gray-600">🕐 {hoveredEvent.time} - {getEventEndTime(hoveredEvent)} ({hoveredEvent.duration}h)</div>
-                                {hoveredEvent.cabin && <div className="text-gray-600">🚪 {hoveredEvent.cabin}</div>}
-                                {hoveredEvent.trainer && <div className="text-gray-600">👨‍🏫 {hoveredEvent.trainer}</div>}
-                                {hoveredEvent.isSeriesEvent && <div className="text-gray-500">🔄 Serientermin</div>}
                             </div>
                         </div>
                     )}
