@@ -1,512 +1,26 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platzbelegungsplaner</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50">
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-        
-        const App = () => {
-            const [events, setEvents] = useState([]);
-            const [showAddModal, setShowAddModal] = useState(false);
-            const [editingEvent, setEditingEvent] = useState(null);
-            const [showExportModal, setShowExportModal] = useState(false);
-            const [showSeriesModal, setShowSeriesModal] = useState(false);
-            const [notifications, setNotifications] = useState([]);
-            const [viewMode, setViewMode] = useState('table');
-            const [currentWeek, setCurrentWeek] = useState(0);
-            
-            const fields = [
-                { id: 'platz1', name: 'Platz 1', color: 'bg-red-50 border-red-200', headerColor: 'bg-red-500' },
-                { id: 'platz2', name: 'Platz 2', color: 'bg-blue-50 border-blue-200', headerColor: 'bg-blue-500' },
-                { id: 'platz3', name: 'Platz 3', color: 'bg-green-50 border-green-200', headerColor: 'bg-green-500' },
-                { id: 'grundschule', name: 'Grundschule', color: 'bg-yellow-50 border-yellow-200', headerColor: 'bg-yellow-500' },
-                { id: 'kunstrasen', name: 'Kunstrasen', color: 'bg-purple-50 border-purple-200', headerColor: 'bg-purple-500' }
-            ];
-
-            const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
-            const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-            const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
-            const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
-            const positions = [
-                { value: '', label: 'Keine Angabe' },
-                { value: 'li', label: 'Links' },
-                { value: 'mi', label: 'Mitte' },
-                { value: 're', label: 'Rechts' }
-            ];
-
-            const eventTypes = {
-                training: { label: 'Training', color: 'bg-green-500', icon: '🏃‍♂️' },
-                match: { label: 'Pflichtspiel', color: 'bg-blue-500', icon: '⚽' },
-                friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-500', icon: '🤝' },
-                cup: { label: 'Pokalspiel', color: 'bg-purple-500', icon: '🏆' },
-                makeup: { label: 'Nachholspiel', color: 'bg-red-500', icon: '🔄' }
-            };
-
-            const [newEvent, setNewEvent] = useState({
-                field: '', day: '', time: '', duration: 1.5, type: 'training',
-                team: '', title: '', cabin: '', trainer: '', position: ''
-            });
-
-            const [seriesEvent, setSeriesEvent] = useState({
-                field: '', day: '', time: '', duration: 1.5, type: 'training',
-                team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
-            });
-
-            // Hilfsfunktionen
-            const getWeekStart = (weekOffset = 0) => {
-                const today = new Date();
-                const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
-                const monday = new Date(today);
-                monday.setDate(today.getDate() - daysToMonday + (weekOffset * 7));
-                return monday;
-            };
-
-            const formatDate = (date) => date.toLocaleDateString('de-DE');
-
-            const getWeekDates = (weekOffset = 0) => {
-                const weekStart = getWeekStart(weekOffset);
-                return weekdays.map((day, index) => {
-                    const date = new Date(weekStart);
-                    date.setDate(weekStart.getDate() + index);
-                    return { day, date: date.getDate(), month: date.getMonth() + 1 };
-                });
-            };
-
-            const getEventEndTime = (event) => {
-                const startTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
-                const endTime = startTime + event.duration;
-                const hours = Math.floor(endTime);
-                const minutes = (endTime - hours) * 60;
-                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-            };
-
-            // Hilfsfunktion für Event-Positionierung
-            const getEventPositions = (day) => {
-                const dayEvents = events.filter(e => e.day === day);
-                const positions = [];
-                
-                dayEvents.forEach(event => {
-                    const startIndex = timeSlots.indexOf(event.time);
-                    if (startIndex === -1) return;
-                    
-                    const endIndex = startIndex + Math.ceil(event.duration * 2); // 30min pro Slot
-                    
-                    // Finde andere Events zur gleichen Zeit auf dem gleichen Platz
-                    const sameTimeFieldEvents = dayEvents.filter(e => 
-                        e.time === event.time && 
-                        e.field === event.field &&
-                        timeSlots.indexOf(e.time) !== -1
-                    );
-                    
-                    // Sortiere Events nach Position (links, mitte, rechts)
-                    sameTimeFieldEvents.sort((a, b) => {
-                        const positionOrder = { 'li': 0, 'mi': 1, 're': 2, '': 3 };
-                        const aOrder = positionOrder[a.position] !== undefined ? positionOrder[a.position] : 3;
-                        const bOrder = positionOrder[b.position] !== undefined ? positionOrder[b.position] : 3;
-                        return aOrder - bOrder;
-                    });
-                    
-                    // Debug: Log die Reihenfolge
-                    if (sameTimeFieldEvents.length > 1) {
-                        console.log(`Events um ${event.time} auf ${event.field}:`, 
-                            sameTimeFieldEvents.map(e => `${e.team}(${e.position || 'keine'})`));
-                    }
-                    
-                    // Finde die Position dieses Events in der sortierten Liste
-                    const positionInGroup = sameTimeFieldEvents.findIndex(e => e.id === event.id);
-                    const groupSize = sameTimeFieldEvents.length;
-                    
-                    // Berechne Spalte basierend auf Zeit-Konflikten mit anderen Plätzen
-                    let column = 0;
-                    while (true) {
-                        const conflict = positions.find(pos => 
-                            pos.column === column &&
-                            pos.startIndex < endIndex &&
-                            pos.endIndex > startIndex &&
-                            pos.field !== event.field // Nur Konflikte mit anderen Plätzen
-                        );
-                        
-                        if (!conflict) break;
-                        column++;
-                    }
-                    
-                    positions.push({
-                        ...event,
-                        column,
-                        startIndex,
-                        endIndex,
-                        positionInGroup,
-                        groupSize
-                    });
-                });
-                
-                return positions;
-            };
-
-            const addNotification = (message, type = 'info') => {
-                const notification = { id: Date.now(), message, type };
-                setNotifications(prev => [notification, ...prev.slice(0, 2)]);
-                setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== notification.id)), 5000);
-            };
-
-            const removeNotification = (id) => {
-                setNotifications(prev => prev.filter(n => n.id !== id));
-            };
-
-            // Persistenz mit localStorage
-            useEffect(() => {
-                try {
-                    const saved = localStorage.getItem('football-events');
-                    if (saved) {
-                        setEvents(JSON.parse(saved));
-                    } else {
-                        const examples = [
-                            { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
-                            { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
-                        ];
-                        setEvents(examples);
-                        localStorage.setItem('football-events', JSON.stringify(examples));
-                    }
-                } catch (e) {
-                    console.error('Fehler beim Laden der Daten:', e);
-                    const examples = [
-                        { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' }
-                    ];
-                    setEvents(examples);
-                }
-            }, []);
-
-            useEffect(() => {
-                if (events.length > 0) {
-                    try {
-                        localStorage.setItem('football-events', JSON.stringify(events));
-                    } catch (e) {
-                        console.error('Fehler beim Speichern der Daten:', e);
-                        addNotification('⚠️ Daten konnten nicht gespeichert werden', 'warning');
-                    }
-                }
-            }, [events]);
-
-            const validateEvent = (event) => {
-                if (!event.field || !event.day || !event.time || !event.team || !event.title) {
-                    return 'Bitte alle Pflichtfelder ausfüllen!';
-                }
-                return null;
-            };
-
-            const addEvent = () => {
-                const error = validateEvent(newEvent);
-                if (error) {
-                    addNotification(error, 'warning');
-                    return;
-                }
-                setEvents(prev => [...prev, { ...newEvent, id: Date.now() }]);
-                setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '' });
-                setShowAddModal(false);
-                addNotification('✅ Termin hinzugefügt', 'success');
-            };
-
-            const updateEvent = () => {
-                const error = validateEvent(editingEvent);
-                if (error) {
-                    addNotification(error, 'warning');
-                    return;
-                }
-                setEvents(prev => prev.map(e => e.id === editingEvent.id ? editingEvent : e));
-                setEditingEvent(null);
-                addNotification('✏️ Termin aktualisiert', 'success');
-            };
-
-            const deleteEvent = (id) => {
-                if (confirm('Termin löschen?')) {
-                    setEvents(prev => prev.filter(e => e.id !== id));
-                    addNotification('🗑️ Termin gelöscht', 'info');
-                }
-            };
-
-            const createSeriesEvents = () => {
-                const error = validateEvent(seriesEvent);
-                if (error) {
-                    addNotification(error, 'warning');
-                    return;
-                }
-                const newEvents = [];
-                for (let week = 0; week < seriesEvent.weeks; week++) {
-                    newEvents.push({ ...seriesEvent, id: Date.now() + week, isSeriesEvent: true });
-                }
-                setEvents(prev => [...prev, ...newEvents]);
-                setSeriesEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10 });
-                setShowSeriesModal(false);
-                addNotification(`📅 ${newEvents.length} Serientermine erstellt`, 'success');
-            };
-
-            const exportToCSV = () => {
-                const headers = ['Platz', 'Tag', 'Zeit', 'Dauer', 'Typ', 'Team', 'Titel', 'Trainer', 'Kabine', 'Position'];
-                const csv = [
-                    headers.join(','),
-                    ...events.map(e => [
-                        fields.find(f => f.id === e.field)?.name || '',
-                        e.day, e.time, e.duration, eventTypes[e.type].label,
-                        e.team, e.title, e.trainer || '', e.cabin || '', 
-                        positions.find(p => p.value === e.position)?.label || ''
-                    ].map(field => `"${field}"`).join(','))
-                ].join('\n');
-                
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'termine.csv';
-                a.click();
-                URL.revokeObjectURL(url);
-                addNotification('📥 CSV exportiert', 'success');
-            };
-
-            const exportToJSON = () => {
-                const dataStr = JSON.stringify(events, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `termine_backup_${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-                addNotification('💾 Backup erstellt', 'success');
-            };
-
-            const importFromJSON = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const importedEvents = JSON.parse(e.target.result);
-                        if (Array.isArray(importedEvents)) {
-                            setEvents(importedEvents);
-                            addNotification('📂 Daten importiert', 'success');
-                        } else {
-                            addNotification('❌ Ungültiges Dateiformat', 'warning');
-                        }
-                    } catch (error) {
-                        addNotification('❌ Fehler beim Importieren', 'warning');
-                    }
-                };
-                reader.readAsText(file);
-                event.target.value = '';
-            };
-
-            return (
-                <div className="max-w-7xl mx-auto p-4">
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">FC</div>
-                            <div>
-                                <h1 className="text-2xl font-bold">Platzbelegungsplaner</h1>
-                                <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2 flex-wrap">
-                            <div className="flex bg-gray-100 rounded p-1">
-                                <button onClick={() => setViewMode('table')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'table' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📊</button>
-                                <button onClick={() => setViewMode('calendar')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'calendar' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📅</button>
-                            </div>
-                            <button onClick={() => setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 transition-colors">Serie</button>
-                            <button onClick={() => setShowExportModal(true)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">Export</button>
-                            <button onClick={() => setShowAddModal(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">+ Hinzufügen</button>
-                        </div>
-                    </div>
-
-                    {/* Wochennavigation */}
-                    <div className="mb-4 flex items-center justify-between bg-white rounded-lg shadow p-3">
-                        <div className="flex items-center gap-3">
-                            <button onClick={() => setCurrentWeek(p => p - 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm transition-colors">←</button>
-                            <span className="font-medium text-sm">Woche vom {formatDate(getWeekStart(currentWeek))}</span>
-                            <button onClick={() => setCurrentWeek(p => p + 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm transition-colors">→</button>
-                        </div>
-                        <button onClick={() => setCurrentWeek(0)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">Aktuelle Woche</button>
-                    </div>
-
-                    {/* Tabellenansicht */}
-                    {viewMode === 'table' && (
-                        <div className="bg-white rounded-lg shadow overflow-x-auto">
-                            <div className="flex border-b min-w-[1200px]">
-                                <div className="w-20 p-3 bg-gray-100 font-medium text-sm border-r">Zeit</div>
-                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
-                                    <div key={day} className="w-40 p-3 bg-gray-100 font-medium text-center text-sm border-r">
-                                        <div>{day}</div>
-                                        <div className="text-xs text-gray-600">{date}.{month}</div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="relative">
-                                {timeSlots.map(time => (
-                                    <div key={time} className="flex border-b min-h-[60px] min-w-[1200px]">
-                                        <div className="w-20 p-3 bg-gray-50 border-r flex items-center text-sm font-medium">{time}</div>
-                                        {weekdays.map(day => (
-                                            <div key={day} className="w-40 border-r p-2 relative">
-                                                {!events.some(e => e.day === day && e.time === time) && (
-                                                    <div
-                                                        className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                        onClick={() => { setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
-                                                    >
-                                                        <span className="text-gray-400 text-lg">+</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ))}
-                                
-                                {/* Event Blöcke */}
-                                {weekdays.map((day, dayIndex) => {
-                                    const eventPositions = getEventPositions(day);
-                                    const maxColumns = Math.max(1, ...eventPositions.map(pos => pos.column + 1));
-                                    
-                                    return eventPositions.map(eventPos => {
-                                        const eventType = eventTypes[eventPos.type];
-                                        const field = fields.find(f => f.id === eventPos.field);
-                                        
-                                        const topPos = eventPos.startIndex * 60 + 4;
-                                        const height = Math.max(50, eventPos.duration * 120);
-                                        
-                                        // Einfache und klare Positionierung
-                                        const timeColumnWidth = 80; // w-20 = 80px
-                                        const dayColumnWidth = 160; // w-40 = 160px  
-                                        const dayStartX = timeColumnWidth + (dayIndex * dayColumnWidth);
-                                        const availableWidth = dayColumnWidth - 8; // 8px padding (4px links + 4px rechts)
-                                        
-                                        let eventLeft = dayStartX + 4; // 4px padding von links
-                                        let eventWidth = availableWidth;
-                                        
-                                        // Bei mehreren Spalten (verschiedene Plätze) verteilen
-                                        if (maxColumns > 1) {
-                                            const columnWidth = availableWidth / maxColumns;
-                                            eventLeft = dayStartX + 4 + (eventPos.column * columnWidth);
-                                            eventWidth = columnWidth - 4;
-                                            
-                                            // Sub-Position für gleichen Platz zur gleichen Zeit
-                                            if (eventPos.groupSize > 1) {
-                                                const subWidth = columnWidth / eventPos.groupSize;
-                                                eventLeft += eventPos.positionInGroup * subWidth;
-                                                eventWidth = subWidth - 2;
-                                            }
-                                        } else {
-                                            // Nur eine Spalte - Events auf gleichem Platz teilen sich die volle Breite
-                                            if (eventPos.groupSize > 1) {
-                                                const subWidth = availableWidth / eventPos.groupSize;
-                                                eventLeft += eventPos.positionInGroup * subWidth;
-                                                eventWidth = subWidth - 2;
-                                            }
-                                        }
-                                        
-                                        // Position-Indikator
-                                        const positionIndicator = eventPos.position === 'li' ? '◀' : 
-                                                                eventPos.position === 'mi' ? '●' : 
-                                                                eventPos.position === 're' ? '▶' : '';
-                                        
-                                        return (
-                                            <div
-                                                key={eventPos.id}
-                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
-                                                style={{ 
-                                                    top: `${topPos}px`,
-                                                    left: `${eventLeft}px`,
-                                                    width: `${eventWidth}px`,
-                                                    height: `${height}px`
-                                                }}
-                                                onClick={() => setEditingEvent({...eventPos})}
-                                            >
-                                                {/* Typ-Header */}
-                                                <div className={`${eventType.color} text-white text-xs px-1 py-1 rounded-t font-medium flex items-center justify-between`}>
-                                                    <div className="flex items-center gap-1 truncate">
-                                                        <span>{eventType.icon}</span>
-                                                        <span className="truncate">{eventType.label}</span>
-                                                    </div>
-                                                    {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
-                                                </div>
-                                                
-                                                {/* Event Content */}
-                                                <div className="p-1 space-y-0.5">
-                                                    {/* Jugend und Titel */}
-                                                    <div className="font-bold text-gray-800 text-xs truncate">{eventPos.team}</div>
-                                                    <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>
-                                                    
-                                                    {/* Platz und Position */}
-                                                    <div className="text-gray-600 text-xs truncate">
-                                                        📍 {field?.name}
-                                                        {eventPos.position && ` (${positions.find(p => p.value === eventPos.position)?.label})`}
-                                                    </div>
-                                                    
-                                                    {/* Kabine */}
-                                                    {eventPos.cabin && (
-                                                        <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>
-                                                    )}
-                                                    
-                                                    {/* Start- und Endzeit */}
-                                                    <div className="text-gray-600 text-xs font-medium">
-                                                        🕐 {eventPos.time} - {getEventEndTime(eventPos)}
-                                                    </div>
-                                                    
-                                                    {/* Trainer */}
-                                                    {eventPos.trainer && (
-                                                        <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>
-                                                    )}
-                                                    
-                                                    {/* Serie-Indikator */}
-                                                    {eventPos.isSeriesEvent && (
-                                                        <div className="text-gray-500 text-xs">🔄 Serie</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    });
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Kalenderansicht */}
-                    {viewMode === 'calendar' && (
-                        <div className="bg-white rounded-lg shadow">
-                            <div className="grid grid-cols-7 border-b">
-                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
-                                    <div key={day} className="p-3 bg-gray-100 text-center border-r text-sm">
-                                        <div className="font-medium">{day}</div>
-                                        <div className="text-xs text-gray-600">{date}.{month}</div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-7 min-h-[400px]">
+<div className="grid grid-cols-7 min-h-[400px]">
                                 {weekdays.map(day => (
                                     <div key={day} className="border-r p-2 space-y-1">
-                                        {events
+                                        {filteredEvents
                                             .filter(e => e.day === day)
                                             .sort((a, b) => a.time.localeCompare(b.time))
                                             .map(event => {
                                                 const eventType = eventTypes[event.type];
                                                 const field = fields.find(f => f.id === event.field);
                                                 return (
-                                                    <div key={event.id} className={`${field?.color} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow`} onClick={() => setEditingEvent({...event})}>
-                                                        {/* Typ-Header */}
+                                                    <div 
+                                                        key={event.id} 
+                                                        className={`${field?.color} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow`} 
+                                                        onClick={() => setEditingEvent({...event})}
+                                                        onMouseEnter={(e) => handleEventHover(event, e)}
+                                                        onMouseLeave={handleEventLeave}
+                                                        onMouseMove={(e) => setHoverPosition({ x: e.clientX, y: e.clientY })}
+                                                    >
                                                         <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t-lg font-medium flex items-center gap-1`}>
                                                             <span>{eventType.icon}</span>
                                                             <span className="truncate">{eventType.label}</span>
                                                         </div>
                                                         
-                                                        {/* Event Content */}
                                                         <div className="p-2">
                                                             <div className="font-semibold text-gray-800">{event.time} - {getEventEndTime(event)}</div>
                                                             <div className="font-semibold text-gray-800">{event.team}</div>
@@ -519,7 +33,10 @@
                                                     </div>
                                                 );
                                             })}
-                                        <div className="border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
+                                        <div 
+                                            className="border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 text-xs transition-colors" 
+                                            onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}
+                                        >
                                             + Hinzufügen
                                         </div>
                                     </div>
@@ -531,14 +48,14 @@
                     {/* Legende */}
                     <div className="mt-4 bg-white rounded-lg shadow p-4">
                         <h3 className="font-medium mb-2 text-sm">Legende</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
                             {Object.entries(eventTypes).map(([key, type]) => (
                                 <div key={key} className={`${type.color} text-white border rounded p-2 text-center text-xs font-medium`}>
                                     {type.icon} {type.label}
                                 </div>
                             ))}
                         </div>
-                        <div className="mt-3">
+                        <div>
                             <h4 className="font-medium mb-2 text-sm">Plätze</h4>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                                 {fields.map(field => (
@@ -549,6 +66,35 @@
                             </div>
                         </div>
                     </div>
+
+                    {/* Hover Tooltip */}
+                    {hoveredEvent && (
+                        <div 
+                            className="fixed z-50 bg-white border rounded-lg shadow-lg p-3 text-sm max-w-xs pointer-events-none"
+                            style={{ 
+                                left: `${hoverPosition.x + 10}px`, 
+                                top: `${hoverPosition.y - 10}px`,
+                                transform: hoverPosition.x > 1000 ? 'translateX(-100%)' : 'none'
+                            }}
+                        >
+                            <div className="space-y-1">
+                                <div className="font-bold text-gray-800 flex items-center gap-2">
+                                    <span className={`${eventTypes[hoveredEvent.type].color} text-white px-2 py-1 rounded text-xs`}>
+                                        {eventTypes[hoveredEvent.type].icon} {eventTypes[hoveredEvent.type].label}
+                                    </span>
+                                </div>
+                                <div className="font-bold text-lg">{hoveredEvent.team}</div>
+                                <div className="font-medium text-gray-700">{hoveredEvent.title}</div>
+                                <div className="text-gray-600">📍 {fields.find(f => f.id === hoveredEvent.field)?.name}
+                                    {hoveredEvent.position && ` (${positions.find(p => p.value === hoveredEvent.position)?.label})`}
+                                </div>
+                                <div className="text-gray-600">🕐 {hoveredEvent.time} - {getEventEndTime(hoveredEvent)} ({hoveredEvent.duration}h)</div>
+                                {hoveredEvent.cabin && <div className="text-gray-600">🚪 {hoveredEvent.cabin}</div>}
+                                {hoveredEvent.trainer && <div className="text-gray-600">👨‍🏫 {hoveredEvent.trainer}</div>}
+                                {hoveredEvent.isSeriesEvent && <div className="text-gray-500">🔄 Serientermin</div>}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Modal: Neuer Termin */}
                     {showAddModal && (
@@ -850,4 +396,559 @@
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
-</html>
+</html><!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platzbelegungsplaner v1.2.0</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const App = () => {
+            const [events, setEvents] = useState([]);
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [showExportModal, setShowExportModal] = useState(false);
+            const [showSeriesModal, setShowSeriesModal] = useState(false);
+            const [notifications, setNotifications] = useState([]);
+            const [viewMode, setViewMode] = useState('table');
+            const [currentWeek, setCurrentWeek] = useState(0);
+            
+            // Filter State
+            const [filters, setFilters] = useState({
+                field: '',
+                type: '',
+                team: ''
+            });
+
+            // Hover State
+            const [hoveredEvent, setHoveredEvent] = useState(null);
+            const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
+            
+            const fields = [
+                { id: 'platz1', name: 'Platz 1', color: 'bg-red-50 border-red-200' },
+                { id: 'platz2', name: 'Platz 2', color: 'bg-blue-50 border-blue-200' },
+                { id: 'platz3', name: 'Platz 3', color: 'bg-green-50 border-green-200' },
+                { id: 'grundschule', name: 'Grundschule', color: 'bg-yellow-50 border-yellow-200' },
+                { id: 'kunstrasen', name: 'Kunstrasen', color: 'bg-purple-50 border-purple-200' }
+            ];
+
+            const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
+            const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+            const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
+            const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
+            const positions = [
+                { value: '', label: 'Keine Angabe' },
+                { value: 'li', label: 'Links' },
+                { value: 'mi', label: 'Mitte' },
+                { value: 're', label: 'Rechts' }
+            ];
+
+            const eventTypes = {
+                training: { label: 'Training', color: 'bg-green-500', icon: '🏃‍♂️' },
+                match: { label: 'Pflichtspiel', color: 'bg-blue-500', icon: '⚽' },
+                friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-500', icon: '🤝' },
+                cup: { label: 'Pokalspiel', color: 'bg-purple-500', icon: '🏆' },
+                makeup: { label: 'Nachholspiel', color: 'bg-red-500', icon: '🔄' }
+            };
+
+            const [newEvent, setNewEvent] = useState({
+                field: '', day: '', time: '', duration: 1.5, type: 'training',
+                team: '', title: '', cabin: '', trainer: '', position: ''
+            });
+
+            const [seriesEvent, setSeriesEvent] = useState({
+                field: '', day: '', time: '', duration: 1.5, type: 'training',
+                team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
+            });
+
+            // Filter-Events
+            const filteredEvents = events.filter(event => {
+                if (filters.field && event.field !== filters.field) return false;
+                if (filters.type && event.type !== filters.type) return false;
+                if (filters.team && event.team !== filters.team) return false;
+                return true;
+            });
+
+            // Hilfsfunktionen
+            const getWeekStart = (weekOffset = 0) => {
+                const today = new Date();
+                const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
+                const monday = new Date(today);
+                monday.setDate(today.getDate() - daysToMonday + (weekOffset * 7));
+                return monday;
+            };
+
+            const formatDate = (date) => date.toLocaleDateString('de-DE');
+
+            const getWeekDates = (weekOffset = 0) => {
+                const weekStart = getWeekStart(weekOffset);
+                return weekdays.map((day, index) => {
+                    const date = new Date(weekStart);
+                    date.setDate(weekStart.getDate() + index);
+                    return { day, date: date.getDate(), month: date.getMonth() + 1 };
+                });
+            };
+
+            const getEventEndTime = (event) => {
+                const startTime = parseFloat(event.time.replace(':', '.').replace('30', '5'));
+                const endTime = startTime + event.duration;
+                const hours = Math.floor(endTime);
+                const minutes = (endTime - hours) * 60;
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            };
+
+            // Hover-Handler
+            const handleEventHover = (event, mouseEvent) => {
+                setHoveredEvent(event);
+                setHoverPosition({ x: mouseEvent.clientX, y: mouseEvent.clientY });
+            };
+
+            const handleEventLeave = () => {
+                setHoveredEvent(null);
+            };
+
+            // Event-Positionierung
+            const getEventPositions = (day) => {
+                const dayEvents = filteredEvents.filter(e => e.day === day);
+                const positions = [];
+                
+                dayEvents.forEach(event => {
+                    const startIndex = timeSlots.indexOf(event.time);
+                    if (startIndex === -1) return;
+                    
+                    const endIndex = startIndex + Math.ceil(event.duration * 2);
+                    
+                    const sameTimeFieldEvents = dayEvents.filter(e => 
+                        e.time === event.time && 
+                        e.field === event.field &&
+                        timeSlots.indexOf(e.time) !== -1
+                    );
+                    
+                    sameTimeFieldEvents.sort((a, b) => {
+                        const positionOrder = { 'li': 0, 'mi': 1, 're': 2, '': 3 };
+                        const aOrder = positionOrder[a.position] !== undefined ? positionOrder[a.position] : 3;
+                        const bOrder = positionOrder[b.position] !== undefined ? positionOrder[b.position] : 3;
+                        return aOrder - bOrder;
+                    });
+                    
+                    const positionInGroup = sameTimeFieldEvents.findIndex(e => e.id === event.id);
+                    const groupSize = sameTimeFieldEvents.length;
+                    
+                    let column = 0;
+                    while (true) {
+                        const conflict = positions.find(pos => 
+                            pos.column === column &&
+                            pos.startIndex < endIndex &&
+                            pos.endIndex > startIndex &&
+                            pos.field !== event.field
+                        );
+                        
+                        if (!conflict) break;
+                        column++;
+                    }
+                    
+                    positions.push({
+                        ...event,
+                        column,
+                        startIndex,
+                        endIndex,
+                        positionInGroup,
+                        groupSize
+                    });
+                });
+                
+                return positions;
+            };
+
+            const addNotification = (message, type = 'info') => {
+                const notification = { id: Date.now(), message, type };
+                setNotifications(prev => [notification, ...prev.slice(0, 2)]);
+                setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== notification.id)), 5000);
+            };
+
+            const removeNotification = (id) => {
+                setNotifications(prev => prev.filter(n => n.id !== id));
+            };
+
+            // Persistenz
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem('football-events');
+                    if (saved) {
+                        setEvents(JSON.parse(saved));
+                    } else {
+                        const examples = [
+                            { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
+                            { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
+                        ];
+                        setEvents(examples);
+                        localStorage.setItem('football-events', JSON.stringify(examples));
+                    }
+                } catch (e) {
+                    console.error('Fehler beim Laden:', e);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (events.length > 0) {
+                    try {
+                        localStorage.setItem('football-events', JSON.stringify(events));
+                    } catch (e) {
+                        console.error('Fehler beim Speichern:', e);
+                    }
+                }
+            }, [events]);
+
+            const validateEvent = (event) => {
+                if (!event.field || !event.day || !event.time || !event.team || !event.title) {
+                    return 'Bitte alle Pflichtfelder ausfüllen!';
+                }
+                return null;
+            };
+
+            const addEvent = () => {
+                const error = validateEvent(newEvent);
+                if (error) {
+                    addNotification(error, 'warning');
+                    return;
+                }
+                setEvents(prev => [...prev, { ...newEvent, id: Date.now() }]);
+                setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '' });
+                setShowAddModal(false);
+                addNotification('✅ Termin hinzugefügt', 'success');
+            };
+
+            const updateEvent = () => {
+                const error = validateEvent(editingEvent);
+                if (error) {
+                    addNotification(error, 'warning');
+                    return;
+                }
+                setEvents(prev => prev.map(e => e.id === editingEvent.id ? editingEvent : e));
+                setEditingEvent(null);
+                addNotification('✏️ Termin aktualisiert', 'success');
+            };
+
+            const deleteEvent = (id) => {
+                if (confirm('Termin löschen?')) {
+                    setEvents(prev => prev.filter(e => e.id !== id));
+                    addNotification('🗑️ Termin gelöscht', 'info');
+                }
+            };
+
+            const createSeriesEvents = () => {
+                const error = validateEvent(seriesEvent);
+                if (error) {
+                    addNotification(error, 'warning');
+                    return;
+                }
+                const newEvents = [];
+                for (let week = 0; week < seriesEvent.weeks; week++) {
+                    newEvents.push({ ...seriesEvent, id: Date.now() + week, isSeriesEvent: true });
+                }
+                setEvents(prev => [...prev, ...newEvents]);
+                setSeriesEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10 });
+                setShowSeriesModal(false);
+                addNotification(`📅 ${newEvents.length} Serientermine erstellt`, 'success');
+            };
+
+            const exportToCSV = () => {
+                const headers = ['Platz', 'Tag', 'Zeit', 'Dauer', 'Typ', 'Team', 'Titel', 'Trainer', 'Kabine', 'Position'];
+                const csv = [
+                    headers.join(','),
+                    ...events.map(e => [
+                        fields.find(f => f.id === e.field)?.name || '',
+                        e.day, e.time, e.duration, eventTypes[e.type].label,
+                        e.team, e.title, e.trainer || '', e.cabin || '', 
+                        positions.find(p => p.value === e.position)?.label || ''
+                    ].map(field => `"${field}"`).join(','))
+                ].join('\n');
+                
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'termine.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                addNotification('📥 CSV exportiert', 'success');
+            };
+
+            const exportToJSON = () => {
+                const dataStr = JSON.stringify(events, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `termine_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                addNotification('💾 Backup erstellt', 'success');
+            };
+
+            const importFromJSON = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedEvents = JSON.parse(e.target.result);
+                        if (Array.isArray(importedEvents)) {
+                            setEvents(importedEvents);
+                            addNotification('📂 Daten importiert', 'success');
+                        } else {
+                            addNotification('❌ Ungültiges Dateiformat', 'warning');
+                        }
+                    } catch (error) {
+                        addNotification('❌ Fehler beim Importieren', 'warning');
+                    }
+                };
+                reader.readAsText(file);
+                event.target.value = '';
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto p-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">FC</div>
+                            <div>
+                                <h1 className="text-2xl font-bold">Platzbelegungsplaner</h1>
+                                <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung</p>
+                                <p className="text-gray-500 text-xs">Version 1.2.0</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                            <div className="flex bg-gray-100 rounded p-1">
+                                <button onClick={() => setViewMode('table')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'table' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📊</button>
+                                <button onClick={() => setViewMode('calendar')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'calendar' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📅</button>
+                            </div>
+                            <button onClick={() => setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 transition-colors">Serie</button>
+                            <button onClick={() => setShowExportModal(true)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">Export</button>
+                            <button onClick={() => setShowAddModal(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">+ Hinzufügen</button>
+                        </div>
+                    </div>
+
+                    {/* Wochennavigation */}
+                    <div className="mb-4 flex items-center justify-between bg-white rounded-lg shadow p-3">
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => setCurrentWeek(p => p - 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm transition-colors">←</button>
+                            <span className="font-medium text-sm">Woche vom {formatDate(getWeekStart(currentWeek))}</span>
+                            <button onClick={() => setCurrentWeek(p => p + 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm transition-colors">→</button>
+                        </div>
+                        <button onClick={() => setCurrentWeek(0)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">Aktuelle Woche</button>
+                    </div>
+
+                    {/* Filter */}
+                    <div className="mb-4 bg-white rounded-lg shadow p-4">
+                        <h3 className="font-medium mb-3 text-sm">Filter</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Platz</label>
+                                <select 
+                                    value={filters.field} 
+                                    onChange={(e) => setFilters({...filters, field: e.target.value})}
+                                    className="w-full border rounded p-2 text-sm"
+                                >
+                                    <option value="">Alle Plätze</option>
+                                    {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Typ</label>
+                                <select 
+                                    value={filters.type} 
+                                    onChange={(e) => setFilters({...filters, type: e.target.value})}
+                                    className="w-full border rounded p-2 text-sm"
+                                >
+                                    <option value="">Alle Typen</option>
+                                    {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.icon} {t.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Jugend</label>
+                                <select 
+                                    value={filters.team} 
+                                    onChange={(e) => setFilters({...filters, team: e.target.value})}
+                                    className="w-full border rounded p-2 text-sm"
+                                >
+                                    <option value="">Alle Teams</option>
+                                    {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        {(filters.field || filters.type || filters.team) && (
+                            <div className="mt-3 flex items-center gap-2">
+                                <span className="text-xs text-gray-600">Aktive Filter:</span>
+                                {filters.field && <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">{fields.find(f => f.id === filters.field)?.name}</span>}
+                                {filters.type && <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">{eventTypes[filters.type]?.label}</span>}
+                                {filters.team && <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs">{filters.team}</span>}
+                                <button 
+                                    onClick={() => setFilters({field: '', type: '', team: ''})}
+                                    className="text-xs text-red-600 hover:text-red-800 ml-2"
+                                >
+                                    Alle zurücksetzen
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Tabellenansicht */}
+                    {viewMode === 'table' && (
+                        <div className="bg-white rounded-lg shadow overflow-x-auto">
+                            <div className="flex border-b min-w-[1200px]">
+                                <div className="w-20 p-3 bg-gray-100 font-medium text-sm border-r">Zeit</div>
+                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
+                                    <div key={day} className="w-40 p-3 bg-gray-100 font-medium text-center text-sm border-r">
+                                        <div>{day}</div>
+                                        <div className="text-xs text-gray-600">{date}.{month}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="relative">
+                                {timeSlots.map(time => (
+                                    <div key={time} className="flex border-b min-h-[60px] min-w-[1200px]">
+                                        <div className="w-20 p-3 bg-gray-50 border-r flex items-center text-sm font-medium">{time}</div>
+                                        {weekdays.map(day => (
+                                            <div key={day} className="w-40 border-r p-2 relative">
+                                                {!filteredEvents.some(e => e.day === day && e.time === time) && (
+                                                    <div
+                                                        className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
+                                                        onClick={() => { setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
+                                                    >
+                                                        <span className="text-gray-400 text-lg">+</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                                
+                                {/* Event Blöcke */}
+                                {weekdays.map((day, dayIndex) => {
+                                    const eventPositions = getEventPositions(day);
+                                    const maxColumns = Math.max(1, ...eventPositions.map(pos => pos.column + 1));
+                                    
+                                    return eventPositions.map(eventPos => {
+                                        const eventType = eventTypes[eventPos.type];
+                                        const field = fields.find(f => f.id === eventPos.field);
+                                        
+                                        const topPos = eventPos.startIndex * 60 + 4;
+                                        const height = Math.max(50, eventPos.duration * 120);
+                                        
+                                        const timeColumnWidth = 80;
+                                        const dayColumnWidth = 160;
+                                        const dayStartX = timeColumnWidth + (dayIndex * dayColumnWidth);
+                                        const availableWidth = dayColumnWidth - 8;
+                                        
+                                        let eventLeft = dayStartX + 4;
+                                        let eventWidth = availableWidth;
+                                        
+                                        if (maxColumns > 1) {
+                                            const columnWidth = availableWidth / maxColumns;
+                                            eventLeft = dayStartX + 4 + (eventPos.column * columnWidth);
+                                            eventWidth = columnWidth - 4;
+                                            
+                                            if (eventPos.groupSize > 1) {
+                                                const subWidth = columnWidth / eventPos.groupSize;
+                                                eventLeft += eventPos.positionInGroup * subWidth;
+                                                eventWidth = subWidth - 2;
+                                            }
+                                        } else {
+                                            if (eventPos.groupSize > 1) {
+                                                const subWidth = availableWidth / eventPos.groupSize;
+                                                eventLeft += eventPos.positionInGroup * subWidth;
+                                                eventWidth = subWidth - 2;
+                                            }
+                                        }
+                                        
+                                        const positionIndicator = eventPos.position === 'li' ? '🔴' : 
+                                                                eventPos.position === 'mi' ? '🟡' : 
+                                                                eventPos.position === 're' ? '🔵' : '';
+                                        
+                                        const isSmall = eventWidth < 100;
+                                        
+                                        return (
+                                            <div
+                                                key={eventPos.id}
+                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
+                                                style={{ 
+                                                    top: `${topPos}px`,
+                                                    left: `${eventLeft}px`,
+                                                    width: `${eventWidth}px`,
+                                                    height: `${height}px`
+                                                }}
+                                                onClick={() => setEditingEvent({...eventPos})}
+                                                onMouseEnter={(e) => handleEventHover(eventPos, e)}
+                                                onMouseLeave={handleEventLeave}
+                                                onMouseMove={(e) => setHoverPosition({ x: e.clientX, y: e.clientY })}
+                                            >
+                                                <div className={`${eventType.color} text-white text-xs px-1 py-1 rounded-t font-medium flex items-center justify-between`}>
+                                                    <div className="flex items-center gap-1 truncate">
+                                                        <span>{eventType.icon}</span>
+                                                        <span className="truncate">{isSmall ? eventType.label.substring(0, 4) : eventType.label}</span>
+                                                    </div>
+                                                    {positionIndicator && <span>{positionIndicator}</span>}
+                                                </div>
+                                                
+                                                <div className="p-1 space-y-0.5">
+                                                    <div className="font-bold text-gray-800 text-xs truncate">{eventPos.team}</div>
+                                                    {!isSmall && <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>}
+                                                    
+                                                    <div className="text-gray-600 text-xs truncate">
+                                                        📍 {isSmall ? 'P' : field?.name}
+                                                        {eventPos.position && ` (${isSmall ? 
+                                                            (eventPos.position === 'li' ? 'Li' : eventPos.position === 'mi' ? 'Mi' : 'Re') : 
+                                                            positions.find(p => p.value === eventPos.position)?.label})`}
+                                                    </div>
+                                                    
+                                                    {eventPos.cabin && !isSmall && (
+                                                        <div className="text-gray-600 text-xs truncate">🚪 {eventPos.cabin}</div>
+                                                    )}
+                                                    
+                                                    {!isSmall && (
+                                                        <div className="text-gray-600 text-xs font-medium">
+                                                            🕐 {eventPos.time} - {getEventEndTime(eventPos)}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {eventPos.trainer && !isSmall && (
+                                                        <div className="text-gray-600 text-xs truncate">👨‍🏫 {eventPos.trainer}</div>
+                                                    )}
+                                                    
+                                                    {eventPos.isSeriesEvent && !isSmall && (
+                                                        <div className="text-gray-500 text-xs">🔄 Serie</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Kalenderansicht */}
+                    {viewMode === 'calendar' && (
+                        <div className="bg-white rounded-lg shadow">
+                            <div className="grid grid-cols-7 border-b">
+                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
+                                    <div key={day} className="p-3 bg-gray-100 text-center border-r text-sm">
+                                        <div className="font-medium">{day}</div>
+                                        <div className="text-xs text-gray-600">{date}.{month}</div>
+                                    </div>
+                                ))}
+                            </div>
