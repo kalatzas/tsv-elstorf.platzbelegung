@@ -24,7 +24,7 @@
             const [showExportModal, setShowExportModal] = useState(false);
             const [showSeriesModal, setShowSeriesModal] = useState(false);
             const [notifications, setNotifications] = useState([]);
-            const [viewMode, setViewMode] = useState('table');
+            const [viewMode, setViewMode] = useState('table'); // table, calendar, fields
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
@@ -388,6 +388,7 @@
                             <div className="flex bg-gray-100 rounded p-1">
                                 <button onClick={() => setViewMode('table')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'table' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📊</button>
                                 <button onClick={() => setViewMode('calendar')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'calendar' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📅</button>
+                                <button onClick={() => setViewMode('fields')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'fields' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>🏟️</button>
                             </div>
                             <button onClick={() => setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 transition-colors">Serie</button>
                             <button onClick={() => setShowExportModal(true)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">Export</button>
@@ -673,6 +674,151 @@
                                         <div className="border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
                                             + Hinzufügen
                                         </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Platzübersicht */}
+                    {viewMode === 'fields' && (
+                        <div className="bg-white rounded-lg shadow overflow-x-auto">
+                            {/* Header mit Wochentagen */}
+                            <div className="flex border-b sticky top-0 bg-white z-20 min-w-[1400px]">
+                                <div className="w-24 p-3 bg-gray-100 font-medium text-sm border-r flex items-center">Plätze</div>
+                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
+                                    <div key={day} className="flex-1 p-3 bg-gray-100 font-medium text-center text-sm border-r">
+                                        <div>{day}</div>
+                                        <div className="text-xs text-gray-600">{date}.{month}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            {/* Plätze mit deren Belegungen */}
+                            <div className="min-w-[1400px]">
+                                {fields.map((field, fieldIndex) => (
+                                    <div key={field.id} className="flex border-b">
+                                        {/* Platzname */}
+                                        <div className={`w-24 p-3 ${field.headerColor} text-white font-medium text-sm border-r sticky left-0 z-10`}>
+                                            {field.name}
+                                        </div>
+                                        
+                                        {/* Belegungen pro Tag */}
+                                        {weekdays.map(day => {
+                                            const dayEvents = getFilteredEvents()
+                                                .filter(e => e.day === day && e.field === field.id)
+                                                .sort((a, b) => a.time.localeCompare(b.time));
+                                            
+                                            return (
+                                                <div key={day} className="flex-1 border-r p-2 min-h-[120px] relative">
+                                                    {/* Zeitraster als Hintergrund */}
+                                                    <div className="absolute inset-0 opacity-10">
+                                                        {timeSlots.map((time, idx) => (
+                                                            <div 
+                                                                key={time} 
+                                                                className="absolute w-full border-t border-gray-300 text-xs text-gray-400"
+                                                                style={{ top: `${(idx / timeSlots.length) * 100}%` }}
+                                                            >
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    
+                                                    {/* Events als Blöcke */}
+                                                    <div className="relative h-full">
+                                                        {dayEvents.map(event => {
+                                                            const startIdx = timeSlots.indexOf(event.time);
+                                                            const endIdx = startIdx + Math.ceil(event.duration * 2);
+                                                            const topPercent = (startIdx / timeSlots.length) * 100;
+                                                            const heightPercent = ((endIdx - startIdx) / timeSlots.length) * 100;
+                                                            
+                                                            const eventType = eventTypes[event.type];
+                                                            const positionObj = positions.find(p => p.value === event.position);
+                                                            
+                                                            // Bestimme die horizontale Position basierend auf der Position
+                                                            let leftPercent = 0;
+                                                            let widthPercent = 100;
+                                                            const overlappingEvents = dayEvents.filter(e => {
+                                                                const eStartIdx = timeSlots.indexOf(e.time);
+                                                                const eEndIdx = eStartIdx + Math.ceil(e.duration * 2);
+                                                                return (startIdx < eEndIdx && endIdx > eStartIdx);
+                                                            });
+                                                            
+                                                            if (overlappingEvents.length > 1) {
+                                                                const eventIndex = overlappingEvents.findIndex(e => e.id === event.id);
+                                                                widthPercent = 100 / overlappingEvents.length;
+                                                                leftPercent = eventIndex * widthPercent;
+                                                            }
+                                                            
+                                                            return (
+                                                                <div
+                                                                    key={event.id}
+                                                                    className={`absolute ${field.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-all hover:z-30 text-xs overflow-hidden`}
+                                                                    style={{
+                                                                        top: `${topPercent}%`,
+                                                                        height: `${heightPercent}%`,
+                                                                        left: `${leftPercent}%`,
+                                                                        width: `${widthPercent}%`,
+                                                                        minHeight: '40px'
+                                                                    }}
+                                                                    onClick={() => setEditingEvent({...event})}
+                                                                    onMouseEnter={(e) => handleEventHover(event, e)}
+                                                                    onMouseLeave={handleEventLeave}
+                                                                    onMouseMove={(e) => {
+                                                                        if (hoveredEvent?.id === event.id) {
+                                                                            setHoverPosition({ x: e.clientX, y: e.clientY });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {/* Kompakter Event-Inhalt */}
+                                                                    <div className={`${eventType.color} text-white px-1 py-0.5 font-medium flex items-center justify-between`}>
+                                                                        <span>{eventType.icon}</span>
+                                                                        {positionObj && <span className="text-xs">{positionObj.icon}</span>}
+                                                                    </div>
+                                                                    <div className="p-1 space-y-0.5">
+                                                                        <div className="font-bold text-gray-800">{event.time}</div>
+                                                                        <div className="font-semibold text-gray-700 truncate">{event.team}</div>
+                                                                        {event.trainer && <div className="text-gray-600 truncate text-xs">👨‍🏫 {event.trainer}</div>}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        
+                                                        {/* Add Button */}
+                                                        {dayEvents.length === 0 && (
+                                                            <div 
+                                                                className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                                                                onClick={() => { 
+                                                                    setNewEvent({...newEvent, day, field: field.id}); 
+                                                                    setShowAddModal(true); 
+                                                                }}
+                                                            >
+                                                                <div className="bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center text-gray-500">
+                                                                    +
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            {/* Zeitskala am linken Rand */}
+                            <div className="absolute left-0 top-0 pointer-events-none">
+                                <div className="w-24 h-[51px]"></div> {/* Platzhalter für Header */}
+                                {fields.map((field, idx) => (
+                                    <div key={field.id} className="relative" style={{ height: '120px' }}>
+                                        {idx === 0 && timeSlots.map((time, timeIdx) => (
+                                            <div 
+                                                key={time} 
+                                                className="absolute left-2 text-xs text-gray-500"
+                                                style={{ top: `${(timeIdx / timeSlots.length) * 100}%` }}
+                                            >
+                                                {time}
+                                            </div>
+                                        ))}
                                     </div>
                                 ))}
                             </div>
