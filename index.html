@@ -40,7 +40,7 @@
                 { id: 'kunstrasen', name: 'Kunstrasen', shortName: 'KR', color: 'bg-purple-50 border-purple-200', headerColor: 'bg-purple-500' }
             ];
 
-            const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
+            const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'];
             const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
             const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
             const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
@@ -72,6 +72,12 @@
             // Gefilterte Events
             const getFilteredEvents = () => {
                 return events.filter(event => {
+                    // Prüfe ob Event in der aktuellen Woche liegt
+                    if (event.weekOffset !== undefined) {
+                        // Für Serientermine: Prüfe ob sie in der aktuellen Woche liegen
+                        if (event.weekOffset !== currentWeek) return false;
+                    }
+                    
                     if (filters.field && event.field !== filters.field) return false;
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
@@ -266,8 +272,20 @@
                     return;
                 }
                 const newEvents = [];
+                const baseDate = getWeekStart(currentWeek);
+                const dayIndex = weekdays.indexOf(seriesEvent.day);
+                
                 for (let week = 0; week < seriesEvent.weeks; week++) {
-                    newEvents.push({ ...seriesEvent, id: Date.now() + week, isSeriesEvent: true });
+                    const eventDate = new Date(baseDate);
+                    eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
+                    
+                    newEvents.push({ 
+                        ...seriesEvent, 
+                        id: Date.now() + week, 
+                        isSeriesEvent: true,
+                        weekOffset: week,
+                        eventDate: eventDate.toISOString()
+                    });
                 }
                 setEvents(prev => [...prev, ...newEvents]);
                 setSeriesEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10 });
@@ -475,7 +493,8 @@
                                         const field = fields.find(f => f.id === eventPos.field);
                                         
                                         const topPos = eventPos.startIndex * 60 + 4;
-                                        const height = Math.max(50, eventPos.duration * 120);
+                                        const eventSlots = Math.ceil(eventPos.duration * 2); // Anzahl der 30-Minuten-Slots
+                                        const height = eventSlots * 60 - 8; // 60px pro Slot, minus padding
                                         
                                         // Einfache und klare Positionierung
                                         const timeColumnWidth = 80; // w-20 = 80px
