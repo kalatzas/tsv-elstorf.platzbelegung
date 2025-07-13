@@ -3,42 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <title>Trainingszeiten Fußball/Hockey ab 01.07.2025</title>
-  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 1rem;
+    }
+    h1 {
+      text-align: center;
+      color: #222;
+    }
+    .platzsperren-table, .training-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1rem;
+    }
+    .platzsperren-table th, .platzsperren-table td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+    .hinweis {
+      background-color: red;
+      color: white;
+      text-align: center;
+      padding: 0.5rem;
+      font-weight: bold;
+      margin-bottom: 1rem;
+    }
+    .training-wrapper {
+      display: grid;
+      grid-template-columns: 80px repeat(5, 1fr);
+      gap: 1px;
+      background-color: #ccc;
+    }
+    .column-header, .time-slot, .training-cell {
+      background-color: white;
+      padding: 5px;
+      border: 1px solid #ddd;
+      min-height: 30px;
+    }
+    .column-header {
+      background-color: #f0f0f0;
+      font-weight: bold;
+      text-align: center;
+    }
+    .time-slot {
+      background-color: #fafafa;
+      font-size: 0.9em;
+    }
+    .yellow { background-color: #ffff99; }
+    .blue { background-color: #b0d8ff; }
+    .beige { background-color: #f5e6cc; }
+    .grey { background-color: #e0e0e0; }
+  </style>
 </head>
 <body>
   <h1>Trainingszeiten Fußball/Hockey ab 01.07.2025</h1>
 
-  <div class="platzsperren">
-    <table>
-      <thead>
-        <tr>
-          <th>Platzsperren:</th>
-          <th>Platz 1</th>
-          <th>Platz 2</th>
-          <th>Platz 3</th>
-          <th>GS-Platz</th>
-          <th>KuRa</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>&nbsp;</td>
-          <td>Frei</td>
-          <td>23.06.-01.08.</td>
-          <td>Frei</td>
-          <td>30.06.-08.08.</td>
-          <td>Frei</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <table class="platzsperren-table">
+    <thead>
+      <tr>
+        <th>Platzsperren:</th>
+        <th>Platz 1</th>
+        <th>Platz 2</th>
+        <th>Platz 3</th>
+        <th>GS-Platz</th>
+        <th>KuRa</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td></td>
+        <td>Frei</td>
+        <td>23.06.-01.08.</td>
+        <td>Frei</td>
+        <td>30.06.-08.08.</td>
+        <td>Frei</td>
+      </tr>
+    </tbody>
+  </table>
 
-  <div class="hinweis">
-    Es sind ausschließlich die angegebenen Trainingsplätze zu nutzen
-  </div>
+  <div class="hinweis">Es sind ausschließlich die angegebenen Trainingsplätze zu nutzen</div>
 
-  <div class="trainingszeiten-grid">
-    <!-- Hier kommt der Trainingszeiten-Inhalt (Montag - Donnerstag) -->
+  <div class="training-wrapper">
+    <div class="column-header"></div>
+    <div class="column-header">Montag</div>
+    <div class="column-header">Dienstag</div>
+    <div class="column-header">Mittwoch</div>
+    <div class="column-header">Donnerstag</div>
+    <div class="column-header">Schule</div>
+
+    <!-- Time column + example rows -->
+    <!-- Repeat these rows with correct time labels and training content -->
+    <div class="time-slot">16:00</div>
+    <div class="training-cell yellow">KuRa II. Hälfte</div>
+    <div class="training-cell yellow">KuRa I. Hälfte</div>
+    <div class="training-cell yellow">U17 17:30-20:00 Daniel</div>
+    <div class="training-cell yellow">U08 17:30-19:00 Julian & Emil</div>
+    <div class="training-cell yellow">Schule: C-Mädchen 17-18 Uhr</div>
+
+    <div class="time-slot">16:30</div>
+    <div class="training-cell blue">Hockey U8/9 17:00-18:30</div>
+    <div class="training-cell blue">Hockey U10/11 17:00-18:30</div>
+    <div class="training-cell yellow">KKA 06/07 17:30-19:00</div>
+    <div class="training-cell yellow">U11 II 17:00-18:30</div>
+    <div class="training-cell yellow">Turnerheim</div>
+
+    <!-- Add all times from 16:00 to 21:00 in 15- or 30-min increments -->
+    <!-- Fill each cell as needed based on the image plan -->
   </div>
 </body>
 </html>
