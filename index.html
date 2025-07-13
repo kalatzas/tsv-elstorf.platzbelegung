@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+// Persistenz mit localStorage<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -704,46 +704,48 @@
                         <div className="bg-white rounded-lg shadow overflow-auto">
                             <div className="min-w-[1400px]">
                                 {/* Header mit Tagen und Plätzen */}
-                                <div className="flex border-b sticky top-0 bg-white z-20">
-                                    {/* Zeit-Spalte */}
-                                    <div className="w-16 bg-gray-100 border-r"></div>
-                                    
-                                    {/* Tage mit Plätzen */}
-                                    {getWeekDates(currentWeek).map(({ day, date, month }) => (
-                                        <div key={day} className="flex-1 border-r">
-                                            {/* Tag Header */}
-                                            <div className="bg-gray-200 p-2 text-center font-medium text-sm border-b">
-                                                <div>{day}</div>
-                                                <div className="text-xs text-gray-600">{date}.{month}</div>
+                                <div className="sticky top-0 bg-white z-20">
+                                    <div className="flex">
+                                        {/* Zeit-Spalte */}
+                                        <div className="w-16 bg-gray-100 border-r border-b border-gray-300"></div>
+                                        
+                                        {/* Tage mit Plätzen */}
+                                        {getWeekDates(currentWeek).map(({ day, date, month }, dayIndex) => (
+                                            <div key={day} className={`${dayIndex < weekdays.length - 1 ? 'border-r-2 border-gray-400' : ''}`}>
+                                                {/* Tag Header */}
+                                                <div className="bg-gray-200 p-2 text-center font-medium text-sm border-b border-gray-300">
+                                                    <div>{day}</div>
+                                                    <div className="text-xs text-gray-600">{date}.{month}</div>
+                                                </div>
+                                                
+                                                {/* Platz Header */}
+                                                <div className="flex border-b border-gray-300">
+                                                    {fields.map((field, fieldIndex) => (
+                                                        <div 
+                                                            key={field.id} 
+                                                            className={`w-20 ${field.headerColor} text-white text-center py-1 text-xs font-medium ${fieldIndex < fields.length - 1 ? 'border-r border-gray-300' : ''}`}
+                                                        >
+                                                            {field.shortName}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            
-                                            {/* Platz Header */}
-                                            <div className="flex">
-                                                {fields.map(field => (
-                                                    <div 
-                                                        key={field.id} 
-                                                        className={`flex-1 ${field.headerColor} text-white text-center py-1 text-xs font-medium border-r last:border-r-0`}
-                                                    >
-                                                        {field.shortName}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                                 
                                 {/* Zeitslots mit Events */}
-                                <div className="relative">
+                                <div>
                                     {timeSlots.map((time, timeIndex) => (
-                                        <div key={time} className="flex border-b min-h-[40px]">
+                                        <div key={time} className="flex">
                                             {/* Zeit */}
-                                            <div className="w-16 bg-gray-50 border-r p-2 text-xs font-medium text-gray-600 flex items-center justify-center">
+                                            <div className="w-16 bg-gray-50 border-r border-b border-gray-300 p-2 text-xs font-medium text-gray-600 flex items-center justify-center sticky left-0 z-10">
                                                 {time}
                                             </div>
                                             
                                             {/* Events pro Tag und Platz */}
-                                            {weekdays.map(day => (
-                                                <div key={day} className="flex-1 flex border-r">
+                                            {weekdays.map((day, dayIndex) => (
+                                                <div key={day} className={`flex ${dayIndex < weekdays.length - 1 ? 'border-r-2 border-gray-400' : ''}`}>
                                                     {fields.map((field, fieldIdx) => {
                                                         const slotEvents = getFilteredEvents().filter(e => 
                                                             e.day === day && 
@@ -761,14 +763,14 @@
                                                         
                                                         // Ist dies der Start eines Events?
                                                         const isEventStart = slotEvents.length > 0;
+                                                        const isOccupied = occupyingEvent && !isEventStart;
                                                         
                                                         return (
                                                             <div 
                                                                 key={field.id} 
-                                                                className={`flex-1 border-r last:border-r-0 p-1 relative ${
-                                                                    occupyingEvent ? '' : 'hover:bg-gray-50'
+                                                                className={`w-20 h-10 border-b border-gray-300 ${fieldIdx < fields.length - 1 ? 'border-r border-gray-300' : ''} p-0.5 relative ${
+                                                                    !occupyingEvent ? 'hover:bg-gray-50' : ''
                                                                 }`}
-                                                                style={{ minWidth: '60px' }}
                                                             >
                                                                 {isEventStart && slotEvents.map(event => {
                                                                     const eventType = eventTypes[event.type];
@@ -778,10 +780,10 @@
                                                                     return (
                                                                         <div
                                                                             key={event.id}
-                                                                            className={`absolute inset-1 ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-10 overflow-hidden`}
+                                                                            className={`absolute inset-0.5 ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden`}
                                                                             style={{
-                                                                                height: `calc(${eventSlots * 40}px - 8px)`,
-                                                                                minHeight: '32px'
+                                                                                height: `calc(${eventSlots * 40}px - 4px)`,
+                                                                                width: 'calc(100% - 4px)'
                                                                             }}
                                                                             onClick={() => setEditingEvent({...event})}
                                                                             onMouseEnter={(e) => handleEventHover(event, e)}
@@ -791,7 +793,7 @@
                                                                                 <div className="flex items-center gap-1">
                                                                                     <span>{eventType.icon}</span>
                                                                                     {!isBlocker && <span className="font-bold truncate">{event.team}</span>}
-                                                                                    {isBlocker && <span className="font-bold truncate">{eventType.label}</span>}
+                                                                                    {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
                                                                                 </div>
                                                                                 {event.duration > 0.5 && !isBlocker && event.trainer && (
                                                                                     <div className="truncate text-xs opacity-90">
@@ -808,8 +810,8 @@
                                                                     );
                                                                 })}
                                                                 
-                                                                {/* Hinzufügen Button wenn leer */}
-                                                                {!occupyingEvent && (
+                                                                {/* Hinzufügen Button wenn leer und nicht belegt */}
+                                                                {!occupyingEvent && !isOccupied && (
                                                                     <div 
                                                                         className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
                                                                         onClick={() => {
