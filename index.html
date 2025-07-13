@@ -16,6 +16,8 @@
         const { useState, useEffect } = React;
         
         const App = () => {
+            const APP_VERSION = '1.0.0'; // SemVer: Major.Minor.Patch
+            
             const [events, setEvents] = useState([]);
             const [showAddModal, setShowAddModal] = useState(false);
             const [editingEvent, setEditingEvent] = useState(null);
@@ -194,7 +196,20 @@
                 setNotifications(prev => prev.filter(n => n.id !== id));
             };
 
-            // Persistenz mit localStorage
+            // ESC-Taste Handler
+            useEffect(() => {
+                const handleEsc = (e) => {
+                    if (e.key === 'Escape') {
+                        setShowAddModal(false);
+                        setShowSeriesModal(false);
+                        setShowExportModal(false);
+                        setEditingEvent(null);
+                    }
+                };
+                
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, []);
             useEffect(() => {
                 try {
                     const saved = localStorage.getItem('football-events');
@@ -261,6 +276,7 @@
             const deleteEvent = (id) => {
                 if (confirm('Termin löschen?')) {
                     setEvents(prev => prev.filter(e => e.id !== id));
+                    setEditingEvent(null); // Modal schließen
                     addNotification('🗑️ Termin gelöscht', 'info');
                 }
             };
@@ -365,7 +381,7 @@
                             <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">FC</div>
                             <div>
                                 <h1 className="text-2xl font-bold">Platzbelegungsplaner</h1>
-                                <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung</p>
+                                <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung • v{APP_VERSION}</p>
                             </div>
                         </div>
                         <div className="flex gap-2 flex-wrap">
@@ -774,8 +790,8 @@
 
                     {/* Modal: Neuer Termin */}
                     {showAddModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
+                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Neuer Termin</h2>
                                     <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -853,8 +869,8 @@
 
                     {/* Modal: Serientermine */}
                     {showSeriesModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowSeriesModal(false); }}>
+                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Serientermine</h2>
                                     <button onClick={() => setShowSeriesModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -936,8 +952,8 @@
 
                     {/* Modal: Termin bearbeiten */}
                     {editingEvent && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingEvent(null); }}>
+                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Termin bearbeiten</h2>
                                     <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1012,8 +1028,8 @@
 
                     {/* Modal: Export */}
                     {showExportModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
+                            <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-4">
                                     <h2 className="text-lg font-bold">Export & Verwaltung</h2>
                                     <button onClick={() => setShowExportModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
