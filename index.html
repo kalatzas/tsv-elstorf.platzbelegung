@@ -8,9 +8,6 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- jsPDF für PDF Export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body class="bg-gray-50">
     <div id="root"></div>
@@ -19,7 +16,7 @@
         const { useState, useEffect } = React;
         
         const App = () => {
-            const APP_VERSION = '1.3.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '1.2.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [showAddModal, setShowAddModal] = useState(false);
@@ -31,8 +28,6 @@
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
-            // const [conflicts, setConflicts] = useState([]);
-            const [isExportingPDF, setIsExportingPDF] = useState(false);
             const [filters, setFilters] = useState({
                 field: '',
                 type: '',
@@ -77,72 +72,12 @@
                 team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
             });
 
-            // Konflikterkennung - AUSKOMMENTIERT
-            /*
-            const detectConflicts = (eventsList) => {
-                const conflictsList = [];
-                const filteredEvents = eventsList.filter(event => {
-                    if (event.weekOffset !== undefined) {
-                        return event.weekOffset === currentWeek;
-                    }
-                    return true;
-                });
-
-                for (let i = 0; i < filteredEvents.length; i++) {
-                    for (let j = i + 1; j < filteredEvents.length; j++) {
-                        const event1 = filteredEvents[i];
-                        const event2 = filteredEvents[j];
-                        
-                        // Nur Events auf demselben Platz und Tag prüfen
-                        if (event1.field === event2.field && event1.day === event2.day) {
-                            const start1 = parseFloat(event1.time.replace(':', '.').replace('30', '5'));
-                            const end1 = start1 + event1.duration;
-                            const start2 = parseFloat(event2.time.replace(':', '.').replace('30', '5'));
-                            const end2 = start2 + event2.duration;
-                            
-                            // Zeitüberschneidung prüfen
-                            if (start1 < end2 && start2 < end1) {
-                                conflictsList.push({
-                                    id: `${event1.id}-${event2.id}`,
-                                    event1: event1,
-                                    event2: event2,
-                                    field: event1.field,
-                                    day: event1.day,
-                                    severity: (event1.type === 'blocked' || event2.type === 'blocked') ? 'high' : 'medium'
-                                });
-                            }
-                        }
-                        
-                        // Kabinenkonflikte prüfen
-                        if (event1.cabin && event2.cabin && event1.cabin === event2.cabin && event1.day === event2.day) {
-                            const start1 = parseFloat(event1.time.replace(':', '.').replace('30', '5'));
-                            const end1 = start1 + event1.duration;
-                            const start2 = parseFloat(event2.time.replace(':', '.').replace('30', '5'));
-                            const end2 = start2 + event2.duration;
-                            
-                            if (start1 < end2 && start2 < end1) {
-                                conflictsList.push({
-                                    id: `cabin-${event1.id}-${event2.id}`,
-                                    event1: event1,
-                                    event2: event2,
-                                    type: 'cabin',
-                                    cabin: event1.cabin,
-                                    day: event1.day,
-                                    severity: 'low'
-                                });
-                            }
-                        }
-                    }
-                }
-                
-                return conflictsList;
-            };
-            */
-
             // Gefilterte Events
             const getFilteredEvents = () => {
                 return events.filter(event => {
+                    // Prüfe ob Event in der aktuellen Woche liegt
                     if (event.weekOffset !== undefined) {
+                        // Für Serientermine: Prüfe ob sie in der aktuellen Woche liegen
                         if (event.weekOffset !== currentWeek) return false;
                     }
                     
@@ -151,128 +86,6 @@
                     if (filters.team && event.team !== filters.team) return false;
                     return true;
                 });
-            };
-
-            // Event ist in Konflikt? - AUSKOMMENTIERT
-            /*
-            const isEventInConflict = (eventId) => {
-                return conflicts.some(conflict => 
-                    conflict.event1.id === eventId || conflict.event2.id === eventId
-                );
-            };
-
-            // Konflikt-Farbe für Event
-            const getConflictColor = (eventId) => {
-                const conflict = conflicts.find(conflict => 
-                    conflict.event1.id === eventId || conflict.event2.id === eventId
-                );
-                if (!conflict) return '';
-                
-                switch (conflict.severity) {
-                    case 'high': return 'border-4 border-red-600 bg-red-100';
-                    case 'medium': return 'border-2 border-orange-500 bg-orange-50';
-                    case 'low': return 'border-2 border-yellow-500 bg-yellow-50';
-                    default: return '';
-                }
-            };
-            */
-
-            // PDF Export
-            const exportToPDF = async () => {
-                if (!window.jsPDF) {
-                    addNotification('❌ PDF-Export nicht verfügbar', 'warning');
-                    return;
-                }
-
-                setIsExportingPDF(true);
-                try {
-                    const { jsPDF } = window.jsPDF;
-                    const pdf = new jsPDF('l', 'mm', 'a4'); // Landscape
-                    
-                    // Header
-                    pdf.setFontSize(18);
-                    pdf.text('Platzbelegungsplaner', 20, 20);
-                    pdf.setFontSize(12);
-                    pdf.text(`Woche vom ${formatDate(getWeekStart(currentWeek))}`, 20, 30);
-                    
-                    // Tabelle erstellen
-                    let startY = 45;
-                    const cellWidth = 35;
-                    const cellHeight = 8;
-                    
-                    // Header Zeile - Tage
-                    pdf.setFillColor(240, 240, 240);
-                    pdf.rect(20, startY, 25, cellHeight, 'F');
-                    pdf.text('Zeit', 22, startY + 5);
-                    
-                    const weekDates = getWeekDates(currentWeek);
-                    weekDates.forEach((date, index) => {
-                        pdf.rect(45 + index * cellWidth, startY, cellWidth, cellHeight, 'F');
-                        pdf.text(`${date.day} ${date.date}.${date.month}`, 47 + index * cellWidth, startY + 5);
-                    });
-                    
-                    // Zeiten und Events
-                    timeSlots.forEach((time, timeIndex) => {
-                        const y = startY + (timeIndex + 1) * cellHeight;
-                        
-                        // Zeit
-                        pdf.rect(20, y, 25, cellHeight);
-                        pdf.text(time, 22, y + 5);
-                        
-                        // Events für jeden Tag
-                        weekdays.forEach((day, dayIndex) => {
-                            const x = 45 + dayIndex * cellWidth;
-                            pdf.rect(x, y, cellWidth, cellHeight);
-                            
-                            const dayEvents = getFilteredEvents().filter(e => e.day === day && e.time === time);
-                            if (dayEvents.length > 0) {
-                                const event = dayEvents[0];
-                                const text = `${event.team} - ${fields.find(f => f.id === event.field)?.shortName}`;
-                                pdf.setFontSize(8);
-                                pdf.text(text, x + 1, y + 4);
-                                pdf.setFontSize(12);
-                            }
-                        });
-                    });
-                    
-                    // Legende
-                    let legendY = startY + (timeSlots.length + 2) * cellHeight;
-                    pdf.text('Legende:', 20, legendY);
-                    legendY += 10;
-                    
-                    Object.entries(eventTypes).forEach(([key, type], index) => {
-                        const x = 20 + (index % 3) * 80;
-                        const y = legendY + Math.floor(index / 3) * 8;
-                        pdf.text(`${type.icon} ${type.label}`, x, y);
-                    });
-                    
-                    // Konflikte anzeigen - AUSKOMMENTIERT
-                    /*
-                    if (conflicts.length > 0) {
-                        legendY += 30;
-                        pdf.setTextColor(255, 0, 0);
-                        pdf.text('⚠️ KONFLIKTE ERKANNT:', 20, legendY);
-                        pdf.setTextColor(0, 0, 0);
-                        
-                        conflicts.forEach((conflict, index) => {
-                            legendY += 8;
-                            const text = conflict.type === 'cabin' 
-                                ? `Kabinen-Konflikt: ${conflict.cabin} - ${conflict.day}`
-                                : `Platz-Konflikt: ${fields.find(f => f.id === conflict.field)?.name} - ${conflict.day}`;
-                            pdf.text(text, 20, legendY);
-                        });
-                    }
-                    */
-                    
-                    pdf.save(`Platzbelegung_${formatDate(getWeekStart(currentWeek)).replace(/\./g, '-')}.pdf`);
-                    addNotification('📄 PDF erfolgreich erstellt', 'success');
-                    
-                } catch (error) {
-                    console.error('PDF Export Fehler:', error);
-                    addNotification('❌ Fehler beim PDF-Export', 'warning');
-                } finally {
-                    setIsExportingPDF(false);
-                }
             };
 
             // Hilfsfunktionen
@@ -398,22 +211,9 @@
                 window.addEventListener('keydown', handleEsc);
                 return () => window.removeEventListener('keydown', handleEsc);
             }, []);
-
-            // Konflikte bei Events-Änderung neu berechnen
-            useEffect(() => {
-                const newConflicts = detectConflicts(events);
-                setConflicts(newConflicts);
-                
-                // Benachrichtigung bei neuen Konflikten
-                if (newConflicts.length > conflicts.length) {
-                    const newConflictCount = newConflicts.length - conflicts.length;
-                    addNotification(`⚠️ ${newConflictCount} neue Konflikt(e) erkannt!`, 'warning');
-                }
-            }, [events, currentWeek]);
-
             useEffect(() => {
                 try {
-                    const saved = window.localStorage.getItem('football-events');
+                    const saved = localStorage.getItem('football-events');
                     if (saved) {
                         setEvents(JSON.parse(saved));
                     } else {
@@ -422,7 +222,7 @@
                             { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
                         ];
                         setEvents(examples);
-                        window.localStorage.setItem('football-events', JSON.stringify(examples));
+                        localStorage.setItem('football-events', JSON.stringify(examples));
                     }
                 } catch (e) {
                     console.error('Fehler beim Laden der Daten:', e);
@@ -436,7 +236,7 @@
             useEffect(() => {
                 if (events.length > 0) {
                     try {
-                        window.localStorage.setItem('football-events', JSON.stringify(events));
+                        localStorage.setItem('football-events', JSON.stringify(events));
                     } catch (e) {
                         console.error('Fehler beim Speichern der Daten:', e);
                         addNotification('⚠️ Daten konnten nicht gespeichert werden', 'warning');
@@ -487,26 +287,16 @@
                     addNotification(error, 'warning');
                     return;
                 }
-                
-                const oldEvent = events.find(e => e.id === editingEvent.id);
-                const hasChanges = JSON.stringify(oldEvent) !== JSON.stringify(editingEvent);
-                
                 setEvents(prev => prev.map(e => e.id === editingEvent.id ? editingEvent : e));
                 setEditingEvent(null);
-                
-                if (hasChanges) {
-                    addNotification('✏️ Termin aktualisiert - Änderungen gespeichert', 'success');
-                } else {
-                    addNotification('ℹ️ Keine Änderungen vorgenommen', 'info');
-                }
+                addNotification('✏️ Termin aktualisiert', 'success');
             };
 
             const deleteEvent = (id) => {
                 if (confirm('Termin löschen?')) {
-                    const deletedEvent = events.find(e => e.id === id);
                     setEvents(prev => prev.filter(e => e.id !== id));
                     setEditingEvent(null); // Modal schließen
-                    addNotification(`🗑️ Termin "${deletedEvent?.title}" gelöscht`, 'info');
+                    addNotification('🗑️ Termin gelöscht', 'info');
                 }
             };
 
@@ -625,36 +415,6 @@
                         </div>
                     </div>
 
-                    {/* Konflikte Warnung - AUSKOMMENTIERT */}
-                    {/*
-                    {conflicts.length > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-red-600 text-lg">⚠️</span>
-                                <h3 className="font-medium text-red-800">
-                                    {conflicts.length} Konflikt{conflicts.length > 1 ? 'e' : ''} erkannt
-                                </h3>
-                            </div>
-                            <div className="space-y-1 text-sm text-red-700">
-                                {conflicts.map(conflict => (
-                                    <div key={conflict.id} className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${
-                                            conflict.severity === 'high' ? 'bg-red-600' : 
-                                            conflict.severity === 'medium' ? 'bg-orange-500' : 'bg-yellow-500'
-                                        }`}></span>
-                                        <span>
-                                            {conflict.type === 'cabin' 
-                                                ? `Kabinen-Konflikt: ${conflict.cabin} am ${conflict.day}`
-                                                : `Platz-Konflikt: ${fields.find(f => f.id === conflict.field)?.name} am ${conflict.day}`
-                                            }
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    */
-
                     {/* Filter Panel - IMMER SICHTBAR */}
                     <div className="bg-white rounded-lg shadow p-4 mb-4">
                         <div className="flex items-center justify-between mb-3">
@@ -767,8 +527,6 @@
                                     return eventPositions.map(eventPos => {
                                         const eventType = eventTypes[eventPos.type];
                                         const field = fields.find(f => f.id === eventPos.field);
-                                        // const isInConflict = isEventInConflict(eventPos.id);
-                                        // const conflictColor = getConflictColor(eventPos.id);
                                         
                                         const topPos = eventPos.startIndex * 60 + 4;
                                         const eventSlots = Math.ceil(eventPos.duration * 2); // Anzahl der 30-Minuten-Slots
@@ -836,10 +594,7 @@
                                                         <span>{eventType.icon}</span>
                                                         {!isCompact && <span className="truncate">{eventType.label}</span>}
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
-                                                        {/* {isInConflict && <span className="text-red-200">⚠️</span>} */}
-                                                    </div>
+                                                    {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
                                                 </div>
                                                 
                                                 {/* Event Content */}
@@ -903,8 +658,6 @@
                                             .map(event => {
                                                 const eventType = eventTypes[event.type];
                                                 const field = fields.find(f => f.id === event.field);
-                                                // const isInConflict = isEventInConflict(event.id);
-                                                // const conflictColor = getConflictColor(event.id);
                                                 return (
                                                     <div 
                                                         key={event.id} 
@@ -919,12 +672,9 @@
                                                         }}
                                                     >
                                                         {/* Typ-Header */}
-                                                        <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t-lg font-medium flex items-center justify-between`}>
-                                                            <div className="flex items-center gap-1">
-                                                                <span>{eventType.icon}</span>
-                                                                <span className="truncate">{eventType.label}</span>
-                                                            </div>
-                                                            {/* {isInConflict && <span className="text-red-200">⚠️</span>} */}
+                                                        <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t-lg font-medium flex items-center gap-1`}>
+                                                            <span>{eventType.icon}</span>
+                                                            <span className="truncate">{eventType.label}</span>
                                                         </div>
                                                         
                                                         {/* Event Content */}
@@ -951,7 +701,7 @@
 
                     {/* Platzübersicht - wie Excel */}
                     {viewMode === 'fields' && (
-                        <div className="bg-white rounded-lg shadow overflow-auto" id="fields-view">
+                        <div className="bg-white rounded-lg shadow overflow-auto">
                             <table className="min-w-full" style={{ minWidth: '1200px' }}>
                                 {/* Header */}
                                 <thead className="sticky top-0 z-20 bg-white">
@@ -1038,8 +788,6 @@
                                                                     const eventType = eventTypes[event.type];
                                                                     const eventSlots = Math.ceil(event.duration * 2);
                                                                     const isBlocker = event.type === 'blocked';
-                                                                    // const isInConflict = isEventInConflict(event.id);
-                                                                    // const conflictColor = getConflictColor(event.id);
                                                                     
                                                                     return (
                                                                         <div
@@ -1056,13 +804,10 @@
                                                                             onMouseLeave={handleEventLeave}
                                                                         >
                                                                             <div className="p-1 text-xs h-full flex flex-col">
-                                                                                <div className="flex items-center justify-between">
-                                                                                    <div className="flex items-center gap-1">
-                                                                                        <span>{eventType.icon}</span>
-                                                                                        {!isBlocker && <span className="font-bold truncate">{event.team}</span>}
-                                                                                        {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
-                                                                                    </div>
-                                                                                    {/* {isInConflict && <span className="text-red-200">⚠️</span>} */}
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <span>{eventType.icon}</span>
+                                                                                    {!isBlocker && <span className="font-bold truncate">{event.team}</span>}
+                                                                                    {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
                                                                                 </div>
                                                                                 {event.duration > 0.5 && !isBlocker && event.trainer && (
                                                                                     <div className="truncate text-xs opacity-90">
@@ -1120,7 +865,6 @@
                                 <div className={`${eventTypes[hoveredEvent.type].color} text-white px-2 py-1 rounded font-medium text-sm flex items-center gap-2`}>
                                     <span>{eventTypes[hoveredEvent.type].icon}</span>
                                     <span>{eventTypes[hoveredEvent.type].label}</span>
-                                    {/* {isEventInConflict(hoveredEvent.id) && <span className="text-red-200">⚠️</span>} */}
                                 </div>
                                 
                                 {/* Hauptinformationen */}
@@ -1174,18 +918,6 @@
                                             <span>Serientermin</span>
                                         </div>
                                     )}
-
-                                    {/* Konflikt-Warnung */}
-                                    {isEventInConflict(hoveredEvent.id) && (
-                                        <div className="border-t pt-2 mt-2">
-                                            <div className="text-red-600 text-xs font-medium">⚠️ Konflikt erkannt!</div>
-                                            {conflicts.filter(c => c.event1.id === hoveredEvent.id || c.event2.id === hoveredEvent.id).map(conflict => (
-                                                <div key={conflict.id} className="text-red-600 text-xs">
-                                                    {conflict.type === 'cabin' ? `Kabinen-Konflikt: ${conflict.cabin}` : 'Platz-Konflikt'}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
                                 
                                 <div className="text-xs text-gray-500 border-t pt-2">
@@ -1225,25 +957,6 @@
                                 ))}
                             </div>
                         </div>
-                        {/* Konflikt-Indikatoren - AUSKOMMENTIERT */}
-                        {/*
-                        {conflicts.length > 0 && (
-                            <div className="mt-3">
-                                <h4 className="font-medium mb-2 text-sm">Konflikt-Indikatoren</h4>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div className="bg-red-100 border-2 border-red-600 rounded p-2 text-center text-xs font-medium text-red-700">
-                                        Schwerwiegend (Platzsperre)
-                                    </div>
-                                    <div className="bg-orange-50 border-2 border-orange-500 rounded p-2 text-center text-xs font-medium text-orange-700">
-                                        Mittel (Platz-Konflikt)
-                                    </div>
-                                    <div className="bg-yellow-50 border-2 border-yellow-500 rounded p-2 text-center text-xs font-medium text-yellow-700">
-                                        Niedrig (Kabinen-Konflikt)
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        */
                     </div>
 
                     {/* Modal: Neuer Termin */}
@@ -1523,15 +1236,8 @@
                                     <button onClick={() => setShowExportModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
                                 </div>
                                 <div className="space-y-3">
-                                    <button 
-                                        onClick={() => { exportToPDF(); setShowExportModal(false); }} 
-                                        disabled={isExportingPDF}
-                                        className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        {isExportingPDF ? '⏳ Erstelle PDF...' : '📄 PDF exportieren'}
-                                    </button>
                                     <button onClick={() => { exportToCSV(); setShowExportModal(false); }} className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
-                                        📊 CSV exportieren
+                                        📄 CSV exportieren
                                     </button>
                                     <button onClick={() => { exportToJSON(); setShowExportModal(false); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         💾 Backup erstellen (JSON)
@@ -1555,7 +1261,7 @@
                                         🖨️ Drucken
                                     </button>
                                     <hr className="my-2" />
-                                    <button onClick={() => { if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { setEvents([]); window.localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                    <button onClick={() => { if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { setEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         🗑️ Alles löschen
                                     </button>
                                 </div>
@@ -1566,44 +1272,16 @@
                     {/* Notifications */}
                     <div className="fixed top-4 right-4 space-y-2 z-40">
                         {notifications.map(notification => (
-                            <div key={notification.id} className={`p-3 rounded-lg shadow-lg relative transition-all duration-300 transform ${
+                            <div key={notification.id} className={`p-3 rounded-lg shadow-lg relative transition-all duration-300 ${
                                 notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
                                 notification.type === 'warning' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
                                 'bg-blue-100 text-blue-800 border border-blue-200'
-                            } animate-slide-in`}>
+                            }`}>
                                 <button onClick={() => removeNotification(notification.id)} className="absolute top-1 right-2 text-gray-500 hover:text-gray-700 text-lg leading-none">×</button>
                                 <div className="pr-6 text-sm">{notification.message}</div>
                             </div>
                         ))}
                     </div>
-
-                    <style jsx>{`
-                        @keyframes slide-in {
-                            from {
-                                transform: translateX(100%);
-                                opacity: 0;
-                            }
-                            to {
-                                transform: translateX(0);
-                                opacity: 1;
-                            }
-                        }
-                        
-                        .animate-slide-in {
-                            animation: slide-in 0.3s ease-out;
-                        }
-                        
-                        @media print {
-                            .no-print {
-                                display: none !important;
-                            }
-                            
-                            body {
-                                -webkit-print-color-adjust: exact;
-                                color-adjust: exact;
-                            }
-                        }
-                    `}</style>
                 </div>
             );
         };
