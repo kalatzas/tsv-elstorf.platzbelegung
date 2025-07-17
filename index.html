@@ -31,13 +31,10 @@
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
-            const [conflicts, setConflicts] = useState([]);
+            // const [conflicts, setConflicts] = useState([]);
             const [isExportingPDF, setIsExportingPDF] = useState(false);
             const [filters, setFilters] = useState({
                 field: '',
-                type: '',
-                team: ''
-            });
             
             const fields = [
                 { id: 'platz1', name: 'Platz 1', shortName: 'P1', color: 'bg-red-50 border-red-200', headerColor: 'bg-red-500' },
