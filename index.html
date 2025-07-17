@@ -35,6 +35,9 @@
             const [isExportingPDF, setIsExportingPDF] = useState(false);
             const [filters, setFilters] = useState({
                 field: '',
+                type: '',
+                team: ''
+            });
             
             const fields = [
                 { id: 'platz1', name: 'Platz 1', shortName: 'P1', color: 'bg-red-50 border-red-200', headerColor: 'bg-red-500' },
@@ -74,8 +77,8 @@
                 team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
             });
 
-            // Konflikterkennung
-            /* Konflikterkennung auskommentiert
+            // Konflikterkennung - AUSKOMMENTIERT
+            /*
             const detectConflicts = (eventsList) => {
                 const conflictsList = [];
                 const filteredEvents = eventsList.filter(event => {
@@ -133,7 +136,8 @@
                 }
                 
                 return conflictsList;
-            };*/
+            };
+            */
 
             // Gefilterte Events
             const getFilteredEvents = () => {
@@ -149,7 +153,8 @@
                 });
             };
 
-            // Event ist in Konflikt?
+            // Event ist in Konflikt? - AUSKOMMENTIERT
+            /*
             const isEventInConflict = (eventId) => {
                 return conflicts.some(conflict => 
                     conflict.event1.id === eventId || conflict.event2.id === eventId
@@ -170,6 +175,7 @@
                     default: return '';
                 }
             };
+            */
 
             // PDF Export
             const exportToPDF = async () => {
@@ -240,7 +246,8 @@
                         pdf.text(`${type.icon} ${type.label}`, x, y);
                     });
                     
-                    // Konflikte anzeigen
+                    // Konflikte anzeigen - AUSKOMMENTIERT
+                    /*
                     if (conflicts.length > 0) {
                         legendY += 30;
                         pdf.setTextColor(255, 0, 0);
@@ -255,6 +262,7 @@
                             pdf.text(text, 20, legendY);
                         });
                     }
+                    */
                     
                     pdf.save(`Platzbelegung_${formatDate(getWeekStart(currentWeek)).replace(/\./g, '-')}.pdf`);
                     addNotification('📄 PDF erfolgreich erstellt', 'success');
@@ -617,7 +625,8 @@
                         </div>
                     </div>
 
-                    {/* Konflikte Warnung */}
+                    {/* Konflikte Warnung - AUSKOMMENTIERT */}
+                    {/*
                     {conflicts.length > 0 && (
                         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
                             <div className="flex items-center gap-2 mb-2">
@@ -644,6 +653,7 @@
                             </div>
                         </div>
                     )}
+                    */
 
                     {/* Filter Panel - IMMER SICHTBAR */}
                     <div className="bg-white rounded-lg shadow p-4 mb-4">
@@ -757,8 +767,8 @@
                                     return eventPositions.map(eventPos => {
                                         const eventType = eventTypes[eventPos.type];
                                         const field = fields.find(f => f.id === eventPos.field);
-                                        const isInConflict = isEventInConflict(eventPos.id);
-                                        const conflictColor = getConflictColor(eventPos.id);
+                                        // const isInConflict = isEventInConflict(eventPos.id);
+                                        // const conflictColor = getConflictColor(eventPos.id);
                                         
                                         const topPos = eventPos.startIndex * 60 + 4;
                                         const eventSlots = Math.ceil(eventPos.duration * 2); // Anzahl der 30-Minuten-Slots
@@ -804,7 +814,7 @@
                                         return (
                                             <div
                                                 key={eventPos.id}
-                                                className={`${field?.color} ${conflictColor} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden ${isInConflict ? 'animate-pulse' : ''}`}
+                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
                                                 style={{ 
                                                     top: `${topPos}px`,
                                                     left: `${eventLeft}px`,
@@ -828,7 +838,7 @@
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
-                                                        {isInConflict && <span className="text-red-200">⚠️</span>}
+                                                        {/* {isInConflict && <span className="text-red-200">⚠️</span>} */}
                                                     </div>
                                                 </div>
                                                 
@@ -893,12 +903,12 @@
                                             .map(event => {
                                                 const eventType = eventTypes[event.type];
                                                 const field = fields.find(f => f.id === event.field);
-                                                const isInConflict = isEventInConflict(event.id);
-                                                const conflictColor = getConflictColor(event.id);
+                                                // const isInConflict = isEventInConflict(event.id);
+                                                // const conflictColor = getConflictColor(event.id);
                                                 return (
                                                     <div 
                                                         key={event.id} 
-                                                        className={`${field?.color} ${conflictColor} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow ${isInConflict ? 'animate-pulse' : ''}`} 
+                                                        className={`${field?.color} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow`} 
                                                         onClick={() => setEditingEvent({...event})}
                                                         onMouseEnter={(e) => handleEventHover(event, e)}
                                                         onMouseLeave={handleEventLeave}
@@ -914,7 +924,7 @@
                                                                 <span>{eventType.icon}</span>
                                                                 <span className="truncate">{eventType.label}</span>
                                                             </div>
-                                                            {isInConflict && <span className="text-red-200">⚠️</span>}
+                                                            {/* {isInConflict && <span className="text-red-200">⚠️</span>} */}
                                                         </div>
                                                         
                                                         {/* Event Content */}
@@ -1028,13 +1038,13 @@
                                                                     const eventType = eventTypes[event.type];
                                                                     const eventSlots = Math.ceil(event.duration * 2);
                                                                     const isBlocker = event.type === 'blocked';
-                                                                    const isInConflict = isEventInConflict(event.id);
-                                                                    const conflictColor = getConflictColor(event.id);
+                                                                    // const isInConflict = isEventInConflict(event.id);
+                                                                    // const conflictColor = getConflictColor(event.id);
                                                                     
                                                                     return (
                                                                         <div
                                                                             key={event.id}
-                                                                            className={`absolute ${isBlocker ? 'bg-gray-600' : eventType.color} ${conflictColor} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden ${isInConflict ? 'animate-pulse' : ''}`}
+                                                                            className={`absolute ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden`}
                                                                             style={{
                                                                                 top: '2px',
                                                                                 left: '2px',
@@ -1052,7 +1062,7 @@
                                                                                         {!isBlocker && <span className="font-bold truncate">{event.team}</span>}
                                                                                         {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
                                                                                     </div>
-                                                                                    {isInConflict && <span className="text-red-200">⚠️</span>}
+                                                                                    {/* {isInConflict && <span className="text-red-200">⚠️</span>} */}
                                                                                 </div>
                                                                                 {event.duration > 0.5 && !isBlocker && event.trainer && (
                                                                                     <div className="truncate text-xs opacity-90">
@@ -1110,7 +1120,7 @@
                                 <div className={`${eventTypes[hoveredEvent.type].color} text-white px-2 py-1 rounded font-medium text-sm flex items-center gap-2`}>
                                     <span>{eventTypes[hoveredEvent.type].icon}</span>
                                     <span>{eventTypes[hoveredEvent.type].label}</span>
-                                    {isEventInConflict(hoveredEvent.id) && <span className="text-red-200">⚠️</span>}
+                                    {/* {isEventInConflict(hoveredEvent.id) && <span className="text-red-200">⚠️</span>} */}
                                 </div>
                                 
                                 {/* Hauptinformationen */}
@@ -1215,6 +1225,8 @@
                                 ))}
                             </div>
                         </div>
+                        {/* Konflikt-Indikatoren - AUSKOMMENTIERT */}
+                        {/*
                         {conflicts.length > 0 && (
                             <div className="mt-3">
                                 <h4 className="font-medium mb-2 text-sm">Konflikt-Indikatoren</h4>
@@ -1231,6 +1243,7 @@
                                 </div>
                             </div>
                         )}
+                        */
                     </div>
 
                     {/* Modal: Neuer Termin */}
