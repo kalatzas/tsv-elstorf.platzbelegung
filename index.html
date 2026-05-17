@@ -87,6 +87,7 @@
             const [loginPassword, setLoginPassword] = useState('');
             const [loggingIn, setLoggingIn] = useState(false);
             const [cloudStatus, setCloudStatus] = useState(FIREBASE_READY ? 'connecting' : 'local');
+            const [dataLoaded, setDataLoaded] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
             const [editingEvent, setEditingEvent] = useState(null);
             const [showExportModal, setShowExportModal] = useState(false);
@@ -341,10 +342,10 @@
                 return positions;
             };
 
-            const addNotification = (message, type = 'info') => {
-                const notification = { id: Date.now(), message, type };
+            const addNotification = (message, type = 'info', options = {}) => {
+                const notification = { id: Date.now() + Math.random(), message, type, action: options.action };
                 setNotifications(prev => [notification, ...prev.slice(0, 2)]);
-                setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== notification.id)), 5000);
+                setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== notification.id)), options.duration || 5000);
             };
 
             const removeNotification = (id) => {
@@ -390,6 +391,7 @@
                         console.error('Fehler beim Laden der Daten:', e);
                         setEvents(EXAMPLE_EVENTS);
                     }
+                    setDataLoaded(true);
                     return;
                 }
                 const unsubData = planDoc().onSnapshot(
@@ -397,10 +399,12 @@
                         const data = snap.exists ? snap.data() : null;
                         setEvents(data && Array.isArray(data.events) ? data.events : []);
                         setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
+                        setDataLoaded(true);
                     },
                     (err) => {
                         console.error('Firestore-Fehler:', err);
                         setCloudStatus('error');
+                        setDataLoaded(true);
                         addNotification('⚠️ Cloud-Verbindung fehlgeschlagen', 'warning');
                     }
                 );
@@ -520,9 +524,16 @@
             const deleteEvent = (id) => {
                 if (!requireEditor()) return;
                 askConfirm('Diesen Termin wirklich löschen?', () => {
+                    const previous = events;
                     commitEvents(events.filter(e => e.id !== id));
                     setEditingEvent(null); // Modal schließen
-                    addNotification('🗑️ Termin gelöscht', 'info');
+                    addNotification('🗑️ Termin gelöscht', 'info', {
+                        duration: 7000,
+                        action: {
+                            label: 'Rückgängig',
+                            onClick: () => { commitEvents(previous); addNotification('↩️ Termin wiederhergestellt', 'success'); }
+                        }
+                    });
                 });
             };
 
@@ -750,8 +761,16 @@
                     <div className="flex-1 overflow-y-auto print-overflow-visible">
                         <div className="max-w-7xl mx-auto px-4 py-3">
 
+                    {/* Ladeanzeige beim Start */}
+                    {!dataLoaded && (
+                        <div className="bg-white rounded-lg shadow p-12 mb-4 text-center">
+                            <div className="inline-block w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
+                            <p className="text-gray-500 text-sm mt-3">Plan wird geladen…</p>
+                        </div>
+                    )}
+
                     {/* Leerer Plan: freundlicher Hinweis */}
-                    {events.length === 0 && (
+                    {dataLoaded && events.length === 0 && (
                         <div className="bg-white rounded-lg shadow p-8 mb-4 text-center">
                             <div className="text-5xl mb-3">📋</div>
                             <h3 className="font-bold text-lg mb-1">Noch keine Termine im Plan</h3>
@@ -770,7 +789,7 @@
                     )}
 
                     {/* Tabellenansicht */}
-                    {viewMode === 'table' && (
+                    {dataLoaded && viewMode === 'table' && (
                         <div className="bg-white rounded-lg shadow overflow-x-auto print-overflow-visible">
                             <div className="flex border-b min-w-[1200px] print-min-0">
                                 <div className="w-20 p-3 bg-gray-100 font-medium text-sm border-r">Zeit</div>
@@ -921,7 +940,7 @@
                     )}
 
                     {/* Kalenderansicht – Handy: durchgehend scrollbare Tagesliste */}
-                    {viewMode === 'calendar' && isMobile && (
+                    {dataLoaded && viewMode === 'calendar' && isMobile && (
                         <div className="space-y-2 print-overflow-visible">
                             {getUpcomingDays(42).map(({ date, dayName, dateNum, month, weekOffset, isToday }) => {
                                 const dayEvents = getEventsForDay(dayName, weekOffset)
@@ -934,7 +953,7 @@
                                         </div>
                                         <div className="p-2 space-y-1">
                                             {dayEvents.length === 0 && (
-                                                <div className="text-xs text-gray-400 py-1">Keine Termine</div>
+                                                <div className="text-xs text-gray-500 py-1">Keine Termine</div>
                                             )}
                                             {dayEvents.map(event => renderEventCard(event))}
                                             {canEdit && (
@@ -950,7 +969,7 @@
                     )}
 
                     {/* Kalenderansicht – Desktop/Tablet: Wochenraster */}
-                    {viewMode === 'calendar' && !isMobile && (
+                    {dataLoaded && viewMode === 'calendar' && !isMobile && (
                         <div className="bg-white rounded-lg shadow p-2 print-overflow-visible">
                             <div className="grid grid-cols-7 gap-2">
                                 {getWeekDates(currentWeek).map(({ day, date, month, isToday }) => (
@@ -978,7 +997,7 @@
                     )}
 
                     {/* Platzübersicht - wie Excel */}
-                    {viewMode === 'fields' && (
+                    {dataLoaded && viewMode === 'fields' && (
                         <div className="bg-white rounded-lg shadow overflow-auto print-overflow-visible">
                             <table className="min-w-full print-min-0" style={{ minWidth: '1200px' }}>
                                 {/* Header */}
@@ -1523,7 +1542,7 @@
                                         🖨️ Drucken
                                     </button>
                                     <hr className="my-2" />
-                                    <button onClick={() => { if(!requireEditor()) { setShowExportModal(false); return; } setShowExportModal(false); askConfirm('Wirklich ALLE Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.', () => { commitEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); }); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                    <button onClick={() => { if(!requireEditor()) { setShowExportModal(false); return; } setShowExportModal(false); askConfirm('Wirklich ALLE Termine löschen?', () => { const previous = events; commitEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info', { duration: 7000, action: { label: 'Rückgängig', onClick: () => { commitEvents(previous); addNotification('↩️ Termine wiederhergestellt', 'success'); } } }); }); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         🗑️ Alles löschen
                                     </button>
                                 </div>
@@ -1584,6 +1603,14 @@
                             }`}>
                                 <button onClick={() => removeNotification(notification.id)} className="absolute top-1 right-2 text-gray-500 hover:text-gray-700 text-lg leading-none">×</button>
                                 <div className="pr-6 text-sm">{notification.message}</div>
+                                {notification.action && (
+                                    <button
+                                        onClick={() => { notification.action.onClick(); removeNotification(notification.id); }}
+                                        className="mt-1 font-semibold text-sm underline hover:no-underline"
+                                    >
+                                        {notification.action.label}
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
