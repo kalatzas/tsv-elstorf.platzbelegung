@@ -23,6 +23,17 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+
+    <style>
+        @media print {
+            @page { size: A4 landscape; margin: 1cm; }
+            body { background: #fff !important; }
+            .no-print { display: none !important; }
+            .print-overflow-visible { overflow: visible !important; }
+            .print-min-0 { min-width: 0 !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
     <div id="root"></div>
@@ -67,7 +78,7 @@
         const planDoc = () => db.collection('plans').doc('tsv-elstorf');
 
         const App = () => {
-            const APP_VERSION = '2.0.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.1.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [isEditor, setIsEditor] = useState(false);
@@ -80,7 +91,8 @@
             const [showExportModal, setShowExportModal] = useState(false);
             const [showSeriesModal, setShowSeriesModal] = useState(false);
             const [notifications, setNotifications] = useState([]);
-            const [viewMode, setViewMode] = useState('table'); // table, calendar, fields
+            const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'calendar' : 'table'); // table, calendar, fields
+            const [confirmDialog, setConfirmDialog] = useState(null);
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
@@ -98,7 +110,14 @@
                 { id: 'kunstrasen', name: 'Kunstrasen', shortName: 'KR', color: 'bg-purple-50 border-purple-200', headerColor: 'bg-purple-500' }
             ];
 
-            const timeSlots = ['16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'];
+            const timeSlots = (() => {
+                const slots = [];
+                for (let h = 8; h <= 22; h++) {
+                    slots.push(`${String(h).padStart(2, '0')}:00`);
+                    if (h < 22) slots.push(`${String(h).padStart(2, '0')}:30`);
+                }
+                return slots;
+            })();
             const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
             const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
             const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
@@ -157,10 +176,14 @@
 
             const getWeekDates = (weekOffset = 0) => {
                 const weekStart = getWeekStart(weekOffset);
+                const today = new Date();
                 return weekdays.map((day, index) => {
                     const date = new Date(weekStart);
                     date.setDate(weekStart.getDate() + index);
-                    return { day, date: date.getDate(), month: date.getMonth() + 1 };
+                    const isToday = date.getDate() === today.getDate()
+                        && date.getMonth() === today.getMonth()
+                        && date.getFullYear() === today.getFullYear();
+                    return { day, date: date.getDate(), month: date.getMonth() + 1, isToday };
                 });
             };
 
@@ -261,6 +284,7 @@
                         setShowSeriesModal(false);
                         setShowExportModal(false);
                         setShowLoginModal(false);
+                        setConfirmDialog(null);
                         setEditingEvent(null);
                     }
                 };
@@ -326,12 +350,18 @@
                 }
             };
 
+            // Darf der aktuelle Nutzer bearbeiten?
+            const canEdit = !FIREBASE_READY || isEditor;
+
             // Prüft, ob bearbeitet werden darf; sonst Anmelde-Dialog
             const requireEditor = () => {
-                if (!FIREBASE_READY || isEditor) return true;
+                if (canEdit) return true;
                 setShowLoginModal(true);
                 return false;
             };
+
+            // App-eigener Bestätigungsdialog statt window.confirm
+            const askConfirm = (message, onConfirm) => setConfirmDialog({ message, onConfirm });
 
             const handleLogin = () => {
                 if (!FIREBASE_READY) {
@@ -407,11 +437,11 @@
 
             const deleteEvent = (id) => {
                 if (!requireEditor()) return;
-                if (confirm('Termin löschen?')) {
+                askConfirm('Diesen Termin wirklich löschen?', () => {
                     commitEvents(events.filter(e => e.id !== id));
                     setEditingEvent(null); // Modal schließen
                     addNotification('🗑️ Termin gelöscht', 'info');
-                }
+                });
             };
 
             const createSeriesEvents = () => {
@@ -526,25 +556,27 @@
                                 </p>
                             </div>
                         </div>
-                        <div className="flex gap-2 flex-wrap">
-                            <div className="flex bg-gray-100 rounded p-1">
-                                <button onClick={() => setViewMode('table')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'table' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📊</button>
-                                <button onClick={() => setViewMode('calendar')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'calendar' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📅</button>
-                                <button onClick={() => setViewMode('fields')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'fields' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>🏟️</button>
+                        <div className="flex gap-2 flex-wrap no-print w-full sm:w-auto">
+                            <div className="flex bg-gray-100 rounded p-1 w-full sm:w-auto">
+                                <button onClick={() => setViewMode('table')} title="Tabellenansicht" aria-label="Tabellenansicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1 ${viewMode === 'table' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}>📊 <span>Tabelle</span></button>
+                                <button onClick={() => setViewMode('calendar')} title="Kalenderansicht" aria-label="Kalenderansicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1 ${viewMode === 'calendar' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}>📅 <span>Kalender</span></button>
+                                <button onClick={() => setViewMode('fields')} title="Platzübersicht" aria-label="Platzübersicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1 ${viewMode === 'fields' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}>🏟️ <span>Plätze</span></button>
                             </div>
-                            <button onClick={() => requireEditor() && setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 transition-colors">Serie</button>
-                            <button onClick={() => setShowExportModal(true)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">Export</button>
-                            <button onClick={() => requireEditor() && setShowAddModal(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">+ Hinzufügen</button>
-                            {FIREBASE_READY && (isEditor ? (
-                                <button onClick={handleLogout} className="bg-gray-700 text-white px-3 py-1 rounded text-sm hover:bg-gray-800 transition-colors">🔓 Abmelden</button>
-                            ) : (
-                                <button onClick={() => setShowLoginModal(true)} className="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm hover:bg-gray-300 transition-colors">🔒 Anmelden</button>
-                            ))}
+                            <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+                                <button onClick={() => requireEditor() && setShowSeriesModal(true)} className="flex-1 sm:flex-none bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors">🔄 Serie</button>
+                                <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors">📤 Export</button>
+                                <button onClick={() => requireEditor() && setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors">+ Termin</button>
+                                {FIREBASE_READY && (isEditor ? (
+                                    <button onClick={handleLogout} className="flex-1 sm:flex-none bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors">🔓 Abmelden</button>
+                                ) : (
+                                    <button onClick={() => setShowLoginModal(true)} className="flex-1 sm:flex-none bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300 transition-colors">🔒 Anmelden</button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
                     {/* Filter Panel - IMMER SICHTBAR */}
-                    <div className="bg-white rounded-lg shadow p-4 mb-4">
+                    <div className="bg-white rounded-lg shadow p-4 mb-4 no-print">
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="font-medium text-sm flex items-center gap-2">
                                 🔍 Filter
@@ -607,22 +639,41 @@
 
                     {/* Wochennavigation */}
                     <div className="mb-4 flex items-center justify-between bg-white rounded-lg shadow p-3">
-                        <div className="flex items-center gap-3">
-                            <button onClick={() => setCurrentWeek(p => p - 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm transition-colors">←</button>
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <button onClick={() => setCurrentWeek(p => p - 1)} aria-label="Vorherige Woche" className="no-print bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded text-sm transition-colors">←</button>
                             <span className="font-medium text-sm">Woche vom {formatDate(getWeekStart(currentWeek))}</span>
-                            <button onClick={() => setCurrentWeek(p => p + 1)} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-sm transition-colors">→</button>
+                            <button onClick={() => setCurrentWeek(p => p + 1)} aria-label="Nächste Woche" className="no-print bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded text-sm transition-colors">→</button>
                         </div>
-                        <button onClick={() => setCurrentWeek(0)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">Aktuelle Woche</button>
+                        <button onClick={() => setCurrentWeek(0)} className="no-print bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors">Aktuelle Woche</button>
                     </div>
+
+                    {/* Leerer Plan: freundlicher Hinweis */}
+                    {events.length === 0 && (
+                        <div className="bg-white rounded-lg shadow p-8 mb-4 text-center">
+                            <div className="text-5xl mb-3">📋</div>
+                            <h3 className="font-bold text-lg mb-1">Noch keine Termine im Plan</h3>
+                            <p className="text-gray-600 text-sm mb-4">
+                                {canEdit
+                                    ? 'Lege den ersten Trainings- oder Spieltermin an.'
+                                    : 'Sobald Termine eingetragen sind, erscheinen sie hier. Zum Anlegen bitte anmelden.'}
+                            </p>
+                            <button
+                                onClick={() => requireEditor() && setShowAddModal(true)}
+                                className="bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700 transition-colors"
+                            >
+                                {canEdit ? '+ Ersten Termin anlegen' : '🔒 Anmelden'}
+                            </button>
+                        </div>
+                    )}
 
                     {/* Tabellenansicht */}
                     {viewMode === 'table' && (
-                        <div className="bg-white rounded-lg shadow overflow-x-auto">
-                            <div className="flex border-b min-w-[1200px]">
+                        <div className="bg-white rounded-lg shadow overflow-x-auto print-overflow-visible">
+                            <div className="flex border-b min-w-[1200px] print-min-0">
                                 <div className="w-20 p-3 bg-gray-100 font-medium text-sm border-r">Zeit</div>
-                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
-                                    <div key={day} className="w-40 p-3 bg-gray-100 font-medium text-center text-sm border-r">
-                                        <div>{day}</div>
+                                {getWeekDates(currentWeek).map(({ day, date, month, isToday }) => (
+                                    <div key={day} className={`w-40 p-3 font-medium text-center text-sm border-r ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                        <div>{day}{isToday && <span className="text-green-700 text-xs ml-1">• heute</span>}</div>
                                         <div className="text-xs text-gray-600">{date}.{month}</div>
                                     </div>
                                 ))}
@@ -630,14 +681,14 @@
 
                             <div className="relative">
                                 {timeSlots.map(time => (
-                                    <div key={time} className="flex border-b min-h-[60px] min-w-[1200px]">
+                                    <div key={time} className="flex border-b min-h-[60px] min-w-[1200px] print-min-0">
                                         <div className="w-20 p-3 bg-gray-50 border-r flex items-center text-sm font-medium">{time}</div>
                                         {weekdays.map(day => (
                                             <div key={day} className="w-40 border-r p-2 relative">
-                                                {!getFilteredEvents().some(e => e.day === day && e.time === time) && (
+                                                {canEdit && !getFilteredEvents().some(e => e.day === day && e.time === time) && (
                                                     <div
-                                                        className="absolute inset-0 hover:bg-gray-50 cursor-pointer opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                        onClick={() => { setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
+                                                        className="no-print absolute inset-0 hover:bg-green-50 cursor-pointer opacity-30 hover:opacity-100 flex items-center justify-center transition-opacity"
+                                                        onClick={() => { if (!requireEditor()) return; setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
                                                     >
                                                         <span className="text-gray-400 text-lg">+</span>
                                                     </div>
@@ -768,18 +819,16 @@
 
                     {/* Kalenderansicht */}
                     {viewMode === 'calendar' && (
-                        <div className="bg-white rounded-lg shadow">
-                            <div className="grid grid-cols-7 border-b">
-                                {getWeekDates(currentWeek).map(({ day, date, month }) => (
-                                    <div key={day} className="p-3 bg-gray-100 text-center border-r text-sm">
-                                        <div className="font-medium">{day}</div>
-                                        <div className="text-xs text-gray-600">{date}.{month}</div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-7 min-h-[400px]">
-                                {weekdays.map(day => (
-                                    <div key={day} className="border-r p-2 space-y-1">
+                        <div className="bg-white rounded-lg shadow p-2 print-overflow-visible">
+                            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+                                {getWeekDates(currentWeek).map(({ day, date, month, isToday }) => (
+                                    <div key={day} className={`border rounded-lg flex flex-col ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
+                                        <div className={`p-2 text-center text-sm rounded-t-lg ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                            <span className="font-medium">{day}</span>
+                                            <span className="text-xs text-gray-600 ml-1">{date}.{month}</span>
+                                            {isToday && <span className="text-xs text-green-700 font-bold ml-1">• heute</span>}
+                                        </div>
+                                        <div className="p-2 space-y-1 flex-1 min-h-[60px]">
                                         {getFilteredEvents()
                                             .filter(e => e.day === day)
                                             .sort((a, b) => a.time.localeCompare(b.time))
@@ -818,8 +867,11 @@
                                                     </div>
                                                 );
                                             })}
-                                        <div className="border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
-                                            + Hinzufügen
+                                        {canEdit && (
+                                            <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => { if (!requireEditor()) return; setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
+                                                + Hinzufügen
+                                            </div>
+                                        )}
                                         </div>
                                     </div>
                                 ))}
@@ -829,20 +881,20 @@
 
                     {/* Platzübersicht - wie Excel */}
                     {viewMode === 'fields' && (
-                        <div className="bg-white rounded-lg shadow overflow-auto">
-                            <table className="min-w-full" style={{ minWidth: '1200px' }}>
+                        <div className="bg-white rounded-lg shadow overflow-auto print-overflow-visible">
+                            <table className="min-w-full print-min-0" style={{ minWidth: '1200px' }}>
                                 {/* Header */}
                                 <thead className="sticky top-0 z-20 bg-white">
                                     {/* Erste Zeile: Wochentage */}
                                     <tr>
                                         <th className="w-20 bg-gray-100 border-r-2 border-b border-gray-400"></th>
-                                        {getWeekDates(currentWeek).map(({ day, date, month }, dayIndex) => (
-                                            <th 
-                                                key={day} 
+                                        {getWeekDates(currentWeek).map(({ day, date, month, isToday }, dayIndex) => (
+                                            <th
+                                                key={day}
                                                 colSpan={fields.length}
-                                                className={`bg-gray-200 text-center font-medium text-sm border-b border-gray-300 p-2 ${dayIndex < weekdays.length - 1 ? 'border-r-2 border-gray-600' : ''}`}
+                                                className={`text-center font-medium text-sm border-b border-gray-300 p-2 ${isToday ? 'bg-green-100' : 'bg-gray-200'} ${dayIndex < weekdays.length - 1 ? 'border-r-2 border-gray-600' : ''}`}
                                             >
-                                                <div>{day}</div>
+                                                <div>{day}{isToday && <span className="text-green-700 text-xs ml-1">• heute</span>}</div>
                                                 <div className="text-xs text-gray-600">{date}.{month}</div>
                                             </th>
                                         ))}
@@ -953,10 +1005,11 @@
                                                                 })}
                                                                 
                                                                 {/* Hinzufügen Button wenn leer und nicht belegt */}
-                                                                {!occupyingEvent && !isOccupied && (
-                                                                    <div 
-                                                                        className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                                                                {canEdit && !occupyingEvent && !isOccupied && (
+                                                                    <div
+                                                                        className="no-print absolute inset-0 flex items-center justify-center opacity-30 hover:opacity-100 transition-opacity cursor-pointer"
                                                                         onClick={() => {
+                                                                            if (!requireEditor()) return;
                                                                             setNewEvent({...newEvent, day, time, field: field.id});
                                                                             setShowAddModal(true);
                                                                         }}
@@ -1389,7 +1442,7 @@
                                         🖨️ Drucken
                                     </button>
                                     <hr className="my-2" />
-                                    <button onClick={() => { if(!requireEditor()) { setShowExportModal(false); return; } if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { commitEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                    <button onClick={() => { if(!requireEditor()) { setShowExportModal(false); return; } setShowExportModal(false); askConfirm('Wirklich ALLE Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.', () => { commitEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); }); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         🗑️ Alles löschen
                                     </button>
                                 </div>
@@ -1419,6 +1472,22 @@
                                     <button onClick={handleLogin} disabled={loggingIn} className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2 px-4 rounded-md transition-colors">
                                         {loggingIn ? 'Anmelden…' : 'Anmelden'}
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal: Bestätigung */}
+                    {confirmDialog && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDialog(null); }}>
+                            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+                                <div className="p-5">
+                                    <h2 className="text-lg font-bold mb-2">Bestätigen</h2>
+                                    <p className="text-sm text-gray-600">{confirmDialog.message}</p>
+                                </div>
+                                <div className="flex gap-3 p-4 border-t bg-gray-50">
+                                    <button onClick={() => setConfirmDialog(null)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
+                                    <button onClick={() => { const cb = confirmDialog.onConfirm; setConfirmDialog(null); if (cb) cb(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Bestätigen</button>
                                 </div>
                             </div>
                         </div>
