@@ -134,7 +134,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.7.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.8.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -343,27 +343,65 @@
                 });
             };
 
-            // Hinweistext zur Konflikt-Warnung (blockt nicht, weist hin)
-            const conflictMessage = (conflicts, candidate) => {
-                const field = fields.find(f => f.id === candidate.field);
-                const first = conflicts[0];
-                const firstLabel = first.type === 'blocked'
-                    ? 'eine Platzsperre'
-                    : `${first.team} (${eventTypes[first.type].label})`;
-                const more = conflicts.length > 1
-                    ? ` (+${conflicts.length - 1} weitere Überschneidung${conflicts.length - 1 > 1 ? 'en' : ''})`
-                    : '';
-                // Sonderregel: Pflichtspiel darf auf einem Trainings-Slot landen
-                const overriddenTraining = candidate.type === 'match'
-                    && conflicts.find(c => c.type === 'training');
-                if (overriddenTraining) {
-                    return `${field?.name} am ${candidate.day} um ${first.time}–${getEventEndTime(first)} Uhr: `
-                        + `Das Pflichtspiel überschneidet sich mit dem Training von ${overriddenTraining.team}.`
-                        + ` Pflichtspiele haben Vorrang – bitte das Trainerteam informieren und das Training verlegen.`
-                        + ` Pflichtspiel trotzdem eintragen?`;
+            // Enthält der Sperrzeitraum mindestens einen bestimmten Wochentag? (0 = Montag)
+            const closureCoversWeekday = (closure, dayIndex) => {
+                const from = new Date(closure.fromDate + 'T00:00:00');
+                const to = new Date(closure.toDate + 'T00:00:00');
+                if ((to - from) / 86400000 >= 6) return true; // Zeitraum >= 7 Tage enthält jeden Wochentag
+                for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+                    if (((d.getDay() + 6) % 7) === dayIndex) return true;
                 }
-                return `${field?.name} ist am ${candidate.day} um ${first.time}–${getEventEndTime(first)} Uhr `
-                    + `bereits belegt: ${firstLabel}.${more} Termin trotzdem speichern?`;
+                return false;
+            };
+
+            // Platzsperren, die mit einem (geplanten) Termin kollidieren
+            const closuresForEvent = (candidate) => {
+                if (!candidate.field || !candidate.day) return [];
+                const fieldClosures = closures.filter(c => c.field === candidate.field);
+                if (fieldClosures.length === 0) return [];
+                if (candidate.eventDate) {
+                    const iso = toISODate(new Date(candidate.eventDate));
+                    return fieldClosures.filter(c => c.fromDate <= iso && iso <= c.toDate);
+                }
+                const dayIndex = weekdays.indexOf(candidate.day);
+                return fieldClosures.filter(c => closureCoversWeekday(c, dayIndex));
+            };
+
+            // Hinweistext zur Konflikt-Warnung (blockt nicht, weist hin)
+            const conflictMessage = (eventConflicts, closureConflicts, candidate) => {
+                const field = fields.find(f => f.id === candidate.field);
+                const parts = [];
+
+                if (closureConflicts.length > 0) {
+                    const c = closureConflicts[0];
+                    const range = c.fromDate === c.toDate
+                        ? formatISODate(c.fromDate)
+                        : `${formatISODate(c.fromDate)} – ${formatISODate(c.toDate)}`;
+                    parts.push(`${field?.name} ist gesperrt (${range}${c.reason ? ' · ' + c.reason : ''}).`);
+                }
+
+                if (eventConflicts.length > 0) {
+                    const first = eventConflicts[0];
+                    const firstLabel = first.type === 'blocked'
+                        ? 'eine Platzsperre'
+                        : `${first.team} (${eventTypes[first.type].label})`;
+                    const more = eventConflicts.length > 1
+                        ? ` (+${eventConflicts.length - 1} weitere Überschneidung${eventConflicts.length - 1 > 1 ? 'en' : ''})`
+                        : '';
+                    // Sonderregel: Pflichtspiel darf auf einem Trainings-Slot landen
+                    const overriddenTraining = candidate.type === 'match'
+                        && eventConflicts.find(c => c.type === 'training');
+                    if (overriddenTraining) {
+                        parts.push(`Das Pflichtspiel am ${candidate.day} um ${first.time}–${getEventEndTime(first)} Uhr `
+                            + `überschneidet sich mit dem Training von ${overriddenTraining.team}. `
+                            + `Pflichtspiele haben Vorrang – bitte das Trainerteam informieren und das Training verlegen.`);
+                    } else {
+                        parts.push(`${candidate.day}, ${first.time}–${getEventEndTime(first)} Uhr `
+                            + `bereits belegt: ${firstLabel}.${more}`);
+                    }
+                }
+
+                return parts.join(' ') + ' Termin trotzdem speichern?';
             };
 
             // Hover-Handler (auf Touch-Geräten kein Tooltip)
@@ -714,9 +752,10 @@
                 };
 
                 if (!isSeries) {
-                    const conflicts = findConflicts(eventToAdd);
-                    if (conflicts.length > 0) {
-                        askConfirm(conflictMessage(conflicts, eventToAdd), commit);
+                    const eventConflicts = findConflicts(eventToAdd);
+                    const closureConflicts = closuresForEvent(eventToAdd);
+                    if (eventConflicts.length > 0 || closureConflicts.length > 0) {
+                        askConfirm(conflictMessage(eventConflicts, closureConflicts, eventToAdd), commit);
                         return;
                     }
                 }
@@ -736,9 +775,10 @@
                     addNotification('Termin aktualisiert', 'success');
                 };
 
-                const conflicts = findConflicts(editingEvent);
-                if (conflicts.length > 0) {
-                    askConfirm(conflictMessage(conflicts, editingEvent), commit);
+                const eventConflicts = findConflicts(editingEvent);
+                const closureConflicts = closuresForEvent(editingEvent);
+                if (eventConflicts.length > 0 || closureConflicts.length > 0) {
+                    askConfirm(conflictMessage(eventConflicts, closureConflicts, editingEvent), commit);
                 } else {
                     commit();
                 }
