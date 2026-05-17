@@ -136,7 +136,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.8.3'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.9.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -209,10 +209,13 @@
 
             const [newEvent, setNewEvent] = useState({
                 field: '', day: '', time: '', duration: 1.5, type: 'training',
-                team: '', title: '', cabin: '', trainer: '', position: '', isSeries: false, weeks: 10
+                team: '', title: '', cabin: [], trainer: '', position: '', isSeries: false, endDate: ''
             });
 
             const [newClosure, setNewClosure] = useState({ field: '', fromDate: '', toDate: '', reason: '' });
+            const [trainers, setTrainers] = useState([]);
+            const [showTrainerModal, setShowTrainerModal] = useState(false);
+            const [newTrainerName, setNewTrainerName] = useState('');
 
             // Gefilterte Events
             const getFilteredEvents = () => {
@@ -457,7 +460,7 @@
                                 <div className="flex items-center gap-1 text-gray-700"><Icon name="clock" className="w-3 h-3" /> {event.time} – {getEventEndTime(event)}</div>
                                 <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {field?.name}{event.position && ` (${positions.find(p => p.value === event.position)?.label})`}</div>
                                 {event.trainer && <div className="flex items-center gap-1 text-gray-600"><Icon name="user" className="w-3 h-3" /> {event.trainer}</div>}
-                                {event.cabin && <div className="flex items-center gap-1 text-gray-600"><Icon name="door" className="w-3 h-3" /> {event.cabin}</div>}
+                                {cabinText(event.cabin) && <div className="flex items-center gap-1 text-gray-600"><Icon name="door" className="w-3 h-3" /> {cabinText(event.cabin)}</div>}
                             </div>
                         </div>
                     </div>
@@ -568,6 +571,7 @@
                         setShowExportModal(false);
                         setShowLoginModal(false);
                         setShowClosureModal(false);
+                        setShowTrainerModal(false);
                         setConfirmDialog(null);
                         setEditingEvent(null);
                     }
@@ -590,6 +594,8 @@
                         setEvents(saved ? JSON.parse(saved) : EXAMPLE_EVENTS);
                         const savedClosures = localStorage.getItem('football-closures');
                         setClosures(savedClosures ? JSON.parse(savedClosures) : []);
+                        const savedTrainers = localStorage.getItem('football-trainers');
+                        setTrainers(savedTrainers ? JSON.parse(savedTrainers) : []);
                     } catch (e) {
                         console.error('Fehler beim Laden der Daten:', e);
                         setEvents(EXAMPLE_EVENTS);
@@ -602,6 +608,7 @@
                         const data = snap.exists ? snap.data() : null;
                         setEvents(data && Array.isArray(data.events) ? data.events : []);
                         setClosures(data && Array.isArray(data.closures) ? data.closures : []);
+                        setTrainers(data && Array.isArray(data.trainers) ? data.trainers : []);
                         setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
                         setDataLoaded(true);
                     },
@@ -639,6 +646,17 @@
                 }
             }, [closures, dataLoaded]);
 
+            // Lokaler Fallback: Trainerliste in localStorage sichern (nur ohne Firebase)
+            useEffect(() => {
+                if (!FIREBASE_READY && dataLoaded) {
+                    try {
+                        localStorage.setItem('football-trainers', JSON.stringify(trainers));
+                    } catch (e) {
+                        console.error('Fehler beim Speichern der Trainerliste:', e);
+                    }
+                }
+            }, [trainers, dataLoaded]);
+
             // Termine speichern: lokal sofort, in der Cloud für alle
             const commitEvents = (next) => {
                 setEvents(next);
@@ -662,6 +680,21 @@
                         });
                 }
             };
+
+            // Trainerliste speichern: lokal sofort, in der Cloud für alle
+            const commitTrainers = (next) => {
+                setTrainers(next);
+                if (FIREBASE_READY) {
+                    planDoc().set({ trainers: next, updatedAt: Date.now() }, { merge: true })
+                        .catch((e) => {
+                            console.error('Cloud-Speichern fehlgeschlagen:', e);
+                            addNotification('Speichern in der Cloud fehlgeschlagen', 'warning');
+                        });
+                }
+            };
+
+            // Kabinen-Anzeige (Mehrfachauswahl als Liste, Altdaten als Text)
+            const cabinText = (cabin) => Array.isArray(cabin) ? cabin.join(', ') : (cabin || '');
 
             // Darf der aktuelle Nutzer bearbeiten?
             const canEdit = !FIREBASE_READY || isEditor;
@@ -705,8 +738,8 @@
                         return 'Bitte Platz, Tag und Zeit auswählen!';
                     }
                 } else {
-                    // Für andere Events alle Felder erforderlich
-                    if (!event.field || !event.day || !event.time || !event.team || !event.title) {
+                    // Pflichtfelder: Platz, Tag, Zeit, Team (Gegner ist optional)
+                    if (!event.field || !event.day || !event.time || !event.team) {
                         return 'Bitte alle Pflichtfelder ausfüllen!';
                     }
                 }
@@ -722,12 +755,10 @@
                 }
                 
                 const isSeries = !!newEvent.isSeries;
-                const weeks = Math.min(52, Math.max(1, parseInt(newEvent.weeks) || 1));
 
-                // Bei Platzsperre automatisch Team und Titel setzen
                 const eventToAdd = {...newEvent};
                 delete eventToAdd.isSeries;
-                delete eventToAdd.weeks;
+                delete eventToAdd.endDate;
                 if (eventToAdd.type === 'blocked') {
                     eventToAdd.team = 'SPERRE';
                     if (!eventToAdd.title) {
@@ -735,23 +766,38 @@
                     }
                 }
 
+                // Serientermine im Voraus erzeugen (wöchentlich bis zum Enddatum)
+                let seriesEvents = null;
+                if (isSeries) {
+                    if (!newEvent.endDate) {
+                        addNotification('Bitte ein Enddatum für die Serie wählen!', 'warning');
+                        return;
+                    }
+                    const baseDate = getWeekStart(currentWeek);
+                    const dayIndex = weekdays.indexOf(eventToAdd.day);
+                    const end = new Date(newEvent.endDate + 'T23:59:59');
+                    seriesEvents = [];
+                    for (let week = 0; week < 60; week++) {
+                        const eventDate = new Date(baseDate);
+                        eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
+                        if (eventDate > end) break;
+                        seriesEvents.push({ ...eventToAdd, id: Date.now() + week, isSeriesEvent: true, weekOffset: week, eventDate: eventDate.toISOString() });
+                    }
+                    if (seriesEvents.length === 0) {
+                        addNotification('Im gewählten Zeitraum liegt kein Termin – bitte Enddatum prüfen.', 'warning');
+                        return;
+                    }
+                }
+
                 const commit = () => {
                     if (isSeries) {
-                        const baseDate = getWeekStart(currentWeek);
-                        const dayIndex = weekdays.indexOf(eventToAdd.day);
-                        const seriesEvents = [];
-                        for (let week = 0; week < weeks; week++) {
-                            const eventDate = new Date(baseDate);
-                            eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
-                            seriesEvents.push({ ...eventToAdd, id: Date.now() + week, isSeriesEvent: true, weekOffset: week, eventDate: eventDate.toISOString() });
-                        }
                         commitEvents([...events, ...seriesEvents]);
-                        addNotification(`${weeks} Serientermine erstellt`, 'success');
+                        addNotification(`${seriesEvents.length} Serientermine erstellt`, 'success');
                     } else {
                         commitEvents([...events, { ...eventToAdd, id: Date.now() }]);
                         addNotification('Termin hinzugefügt', 'success');
                     }
-                    setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', isSeries: false, weeks: 10 });
+                    setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: [], trainer: '', position: '', isSeries: false, endDate: '' });
                     setShowAddModal(false);
                 };
 
@@ -835,14 +881,32 @@
                 });
             };
 
+            const addTrainer = () => {
+                if (!requireEditor()) return;
+                const name = newTrainerName.trim();
+                if (!name) return;
+                if (trainers.some(t => t.toLowerCase() === name.toLowerCase())) {
+                    addNotification('Diesen Trainer gibt es bereits', 'warning');
+                    return;
+                }
+                commitTrainers([...trainers, name].sort((a, b) => a.localeCompare(b)));
+                setNewTrainerName('');
+                addNotification('Trainer hinzugefügt', 'success');
+            };
+
+            const deleteTrainer = (name) => {
+                if (!requireEditor()) return;
+                commitTrainers(trainers.filter(t => t !== name));
+            };
+
             const exportToCSV = () => {
-                const headers = ['Platz', 'Tag', 'Zeit', 'Dauer', 'Typ', 'Team', 'Titel', 'Trainer', 'Kabine', 'Position'];
+                const headers = ['Platz', 'Tag', 'Zeit', 'Dauer', 'Typ', 'Team', 'Gegner', 'Trainer', 'Kabine', 'Position'];
                 const csv = [
                     headers.join(','),
                     ...events.map(e => [
                         fields.find(f => f.id === e.field)?.name || '',
                         e.day, e.time, e.duration, eventTypes[e.type].label,
-                        e.team, e.title, e.trainer || '', e.cabin || '', 
+                        e.team, e.title || '', e.trainer || '', cabinText(e.cabin),
                         positions.find(p => p.value === e.position)?.label || ''
                     ].map(field => `"${field}"`).join(','))
                 ].join('\n');
@@ -1244,8 +1308,8 @@
                                                     </div>
 
                                                     {/* Kabine - nur wenn nicht kompakt */}
-                                                    {eventPos.cabin && !isCompact && (
-                                                        <div className="flex items-center gap-1 text-gray-600 text-xs truncate"><Icon name="door" className="w-3 h-3" /> {eventPos.cabin}</div>
+                                                    {cabinText(eventPos.cabin) && !isCompact && (
+                                                        <div className="flex items-center gap-1 text-gray-600 text-xs truncate"><Icon name="door" className="w-3 h-3" /> {cabinText(eventPos.cabin)}</div>
                                                     )}
 
                                                     {/* Start- und Endzeit */}
@@ -1532,10 +1596,10 @@
                                     )}
 
                                     {/* Kabine */}
-                                    {hoveredEvent.cabin && (
+                                    {cabinText(hoveredEvent.cabin) && (
                                         <div className="flex items-center gap-1.5 text-gray-600">
                                             <Icon name="door" className="w-4 h-4" />
-                                            <span>{hoveredEvent.cabin}</span>
+                                            <span>{cabinText(hoveredEvent.cabin)}</span>
                                         </div>
                                     )}
 
@@ -1575,6 +1639,12 @@
                                             </select>
                                         </div>
                                         <div>
+                                            <label className="block text-sm font-medium mb-1">Typ *</label>
+                                            <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                {['training', 'match', 'friendly', 'cup'].map(k => <option key={k} value={k}>{eventTypes[k].label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
                                             <label className="block text-sm font-medium mb-1">Tag *</label>
                                             <select value={newEvent.day} onChange={(e) => setNewEvent({...newEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
                                                 <option value="">Wählen</option>
@@ -1593,57 +1663,53 @@
                                             <input type="number" step="0.5" min="0.5" max="3" value={newEvent.duration} onChange={(e) => setNewEvent({...newEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Typ *</label>
-                                            <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Team {newEvent.type !== 'blocked' && '*'}</label>
-                                            <select 
-                                                value={newEvent.team} 
-                                                onChange={(e) => setNewEvent({...newEvent, team: e.target.value})} 
-                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                                disabled={newEvent.type === 'blocked'}
-                                            >
+                                            <label className="block text-sm font-medium mb-1">Team *</label>
+                                            <select value={newEvent.team} onChange={(e) => setNewEvent({...newEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
                                                 <option value="">Wählen</option>
                                                 {teams.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
+                                        {(newEvent.type === 'match' || newEvent.type === 'friendly' || newEvent.type === 'cup') && (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Gegner</label>
+                                                <input
+                                                    type="text"
+                                                    value={newEvent.title}
+                                                    onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
+                                                    className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                    placeholder="z.B. FC Hamburg"
+                                                />
+                                            </div>
+                                        )}
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">
-                                                {newEvent.type === 'blocked' ? 'Grund der Sperre' : 'Titel'} *
-                                            </label>
-                                            <input 
-                                                type="text" 
-                                                value={newEvent.title} 
-                                                onChange={(e) => setNewEvent({...newEvent, title: e.target.value})} 
-                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" 
-                                                placeholder={newEvent.type === 'blocked' ? 'z.B. Platzpflege, Renovierung' : 'z.B. U15 Training'}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Trainer</label>
-                                            <input 
-                                                type="text" 
-                                                value={newEvent.trainer} 
-                                                onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} 
-                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" 
-                                                placeholder="Name des Trainers"
-                                                disabled={newEvent.type === 'blocked'}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Kabine</label>
-                                            <select 
-                                                value={newEvent.cabin} 
-                                                onChange={(e) => setNewEvent({...newEvent, cabin: e.target.value})} 
-                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                                disabled={newEvent.type === 'blocked'}
-                                            >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-sm font-medium">Trainer</label>
+                                                {canEdit && <button type="button" onClick={() => setShowTrainerModal(true)} className="text-xs text-green-700 hover:underline">Trainer verwalten</button>}
+                                            </div>
+                                            <select value={newEvent.trainer} onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
                                                 <option value="">Wählen</option>
-                                                {cabins.map(c => <option key={c} value={c}>{c}</option>)}
+                                                {trainers.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Kabinen</label>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                {cabins.map(c => {
+                                                    const sel = Array.isArray(newEvent.cabin) ? newEvent.cabin : [];
+                                                    const checked = sel.includes(c);
+                                                    return (
+                                                        <label key={c} className={`flex items-center gap-2 text-sm border rounded-md p-2 cursor-pointer ${checked ? 'bg-green-50 border-green-300' : ''}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={checked}
+                                                                onChange={(e) => setNewEvent({...newEvent, cabin: e.target.checked ? [...sel, c] : sel.filter(x => x !== c)})}
+                                                                className="w-4 h-4 accent-green-600"
+                                                            />
+                                                            {c}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Position</label>
@@ -1651,7 +1717,6 @@
                                                 value={newEvent.position}
                                                 onChange={(e) => setNewEvent({...newEvent, position: e.target.value})}
                                                 className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                                disabled={newEvent.type === 'blocked'}
                                             >
                                                 {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                                             </select>
@@ -1669,16 +1734,14 @@
                                             </label>
                                             {newEvent.isSeries && (
                                                 <div className="mt-3">
-                                                    <label className="block text-sm font-medium mb-1">Anzahl Wochen</label>
+                                                    <label className="block text-sm font-medium mb-1">Serie bis (Enddatum) *</label>
                                                     <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="52"
-                                                        value={newEvent.weeks}
-                                                        onChange={(e) => setNewEvent({...newEvent, weeks: parseInt(e.target.value) || 1})}
+                                                        type="date"
+                                                        value={newEvent.endDate}
+                                                        onChange={(e) => setNewEvent({...newEvent, endDate: e.target.value})}
                                                         className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                     />
-                                                    <p className="text-xs text-gray-500 mt-1">Wird ab der aktuell angezeigten Woche {newEvent.weeks || 1}× wöchentlich wiederholt.</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Der Termin wird ab der aktuell angezeigten Woche wöchentlich bis zu diesem Datum wiederholt.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -1754,6 +1817,43 @@
                         </div>
                     )}
 
+                    {/* Modal: Trainer verwalten */}
+                    {showTrainerModal && (
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowTrainerModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-between items-center p-6 border-b">
+                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="user" className="w-5 h-5" /> Trainer verwalten</h2>
+                                    <button onClick={() => setShowTrainerModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={newTrainerName}
+                                            onChange={(e) => setNewTrainerName(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') addTrainer(); }}
+                                            placeholder="Name des Trainers"
+                                            className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        />
+                                        <button onClick={addTrainer} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1"><Icon name="plus" /> Hinzufügen</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {trainers.length === 0 && <p className="text-sm text-gray-500">Noch keine Trainer eingetragen.</p>}
+                                        {trainers.map(t => (
+                                            <div key={t} className="flex items-center justify-between gap-2 border rounded-md p-2">
+                                                <span className="text-sm font-medium text-gray-800 truncate flex items-center gap-2"><Icon name="user" className="w-4 h-4 text-gray-400" /> {t}</span>
+                                                <button onClick={() => deleteTrainer(t)} className="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded shrink-0">Entfernen</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex p-6 border-t bg-gray-50">
+                                    <button onClick={() => setShowTrainerModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Modal: Termin bearbeiten */}
                     {editingEvent && (
                         <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setEditingEvent(null); }}>
@@ -1798,20 +1898,42 @@
                                                 {teams.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
+                                        {(editingEvent.type === 'match' || editingEvent.type === 'friendly' || editingEvent.type === 'cup') && (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Gegner</label>
+                                                <input type="text" value={editingEvent.title || ''} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="z.B. FC Hamburg" />
+                                            </div>
+                                        )}
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Titel</label>
-                                            <input type="text" value={editingEvent.title} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Trainer</label>
-                                            <input type="text" value={editingEvent.trainer} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Kabine</label>
-                                            <select value={editingEvent.cabin} onChange={(e) => setEditingEvent({...editingEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-sm font-medium">Trainer</label>
+                                                {canEdit && <button type="button" onClick={() => setShowTrainerModal(true)} className="text-xs text-blue-700 hover:underline">Trainer verwalten</button>}
+                                            </div>
+                                            <select value={editingEvent.trainer || ''} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                                 <option value="">Wählen</option>
-                                                {cabins.map(c => <option key={c} value={c}>{c}</option>)}
+                                                {editingEvent.trainer && !trainers.includes(editingEvent.trainer) && <option value={editingEvent.trainer}>{editingEvent.trainer}</option>}
+                                                {trainers.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Kabinen</label>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                {cabins.map(c => {
+                                                    const sel = Array.isArray(editingEvent.cabin) ? editingEvent.cabin : (editingEvent.cabin ? [editingEvent.cabin] : []);
+                                                    const checked = sel.includes(c);
+                                                    return (
+                                                        <label key={c} className={`flex items-center gap-2 text-sm border rounded-md p-2 cursor-pointer ${checked ? 'bg-blue-50 border-blue-300' : ''}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={checked}
+                                                                onChange={(e) => setEditingEvent({...editingEvent, cabin: e.target.checked ? [...sel, c] : sel.filter(x => x !== c)})}
+                                                                className="w-4 h-4 accent-blue-600"
+                                                            />
+                                                            {c}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Position</label>
