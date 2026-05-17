@@ -25,6 +25,12 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
     <style>
+        :root { --kb-inset: 0px; }
+        /* Modal-Overlay: schiebt das Bottom-Sheet bei offener Tastatur nach oben */
+        .modal-overlay { padding-bottom: var(--kb-inset); }
+        @media (min-width: 640px) {
+            .modal-overlay { padding: 1rem; }
+        }
         @media print {
             @page { size: A4 landscape; margin: 1cm; }
             body { background: #fff !important; }
@@ -128,7 +134,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.6.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.6.1'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -499,6 +505,23 @@
                 };
                 window.addEventListener('resize', onResize);
                 return () => window.removeEventListener('resize', onResize);
+            }, []);
+
+            // Tastaturhöhe auf dem Handy ermitteln, damit Dialoge nach oben rücken
+            useEffect(() => {
+                const vv = window.visualViewport;
+                if (!vv) return;
+                const update = () => {
+                    const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+                    document.documentElement.style.setProperty('--kb-inset', `${inset}px`);
+                };
+                update();
+                vv.addEventListener('resize', update);
+                vv.addEventListener('scroll', update);
+                return () => {
+                    vv.removeEventListener('resize', update);
+                    vv.removeEventListener('scroll', update);
+                };
             }, []);
 
             // ESC-Taste Handler
@@ -1503,8 +1526,8 @@
 
                     {/* Modal: Neuer Termin */}
                     {showAddModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
-                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Neuer Termin</h2>
                                     <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1612,8 +1635,8 @@
 
                     {/* Modal: Serientermine */}
                     {showSeriesModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowSeriesModal(false); }}>
-                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowSeriesModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Serientermine</h2>
                                     <button onClick={() => setShowSeriesModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1695,8 +1718,8 @@
 
                     {/* Modal: Platzsperren */}
                     {showClosureModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowClosureModal(false); }}>
-                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowClosureModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="ban" className="w-5 h-5" /> Platzsperren</h2>
                                     <button onClick={() => setShowClosureModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1757,8 +1780,8 @@
 
                     {/* Modal: Termin bearbeiten */}
                     {editingEvent && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingEvent(null); }}>
-                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setEditingEvent(null); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Termin bearbeiten</h2>
                                     <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1833,7 +1856,7 @@
 
                     {/* Modal: Export */}
                     {showExportModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
                             <div className="bg-white rounded-t-2xl sm:rounded-lg p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-4">
                                     <h2 className="text-lg font-bold">Export & Verwaltung</h2>
@@ -1875,7 +1898,7 @@
 
                     {/* Modal: Anmelden zum Bearbeiten */}
                     {showLoginModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}>
                             <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full max-w-sm">
                                 <div className="flex items-center justify-between p-4 border-b">
                                     <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="lock" className="w-5 h-5" /> Zum Bearbeiten anmelden</h2>
@@ -1902,7 +1925,7 @@
 
                     {/* Modal: Bestätigung */}
                     {confirmDialog && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDialog(null); }}>
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDialog(null); }}>
                             <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full max-w-sm">
                                 <div className="p-5">
                                     <h2 className="text-lg font-bold mb-2">Bestätigen</h2>
