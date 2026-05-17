@@ -128,7 +128,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.5.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.6.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1503,8 +1503,8 @@
 
                     {/* Modal: Neuer Termin */}
                     {showAddModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Neuer Termin</h2>
                                     <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1612,8 +1612,8 @@
 
                     {/* Modal: Serientermine */}
                     {showSeriesModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowSeriesModal(false); }}>
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowSeriesModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Serientermine</h2>
                                     <button onClick={() => setShowSeriesModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1695,8 +1695,8 @@
 
                     {/* Modal: Platzsperren */}
                     {showClosureModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowClosureModal(false); }}>
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowClosureModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="ban" className="w-5 h-5" /> Platzsperren</h2>
                                     <button onClick={() => setShowClosureModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1757,8 +1757,8 @@
 
                     {/* Modal: Termin bearbeiten */}
                     {editingEvent && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingEvent(null); }}>
-                            <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingEvent(null); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center p-6 border-b">
                                     <h2 className="text-lg font-bold">Termin bearbeiten</h2>
                                     <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1833,8 +1833,8 @@
 
                     {/* Modal: Export */}
                     {showExportModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
-                            <div className="bg-white rounded-lg p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-4">
                                     <h2 className="text-lg font-bold">Export & Verwaltung</h2>
                                     <button onClick={() => setShowExportModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1875,8 +1875,8 @@
 
                     {/* Modal: Anmelden zum Bearbeiten */}
                     {showLoginModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}>
-                            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full max-w-sm">
                                 <div className="flex items-center justify-between p-4 border-b">
                                     <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="lock" className="w-5 h-5" /> Zum Bearbeiten anmelden</h2>
                                     <button onClick={() => setShowLoginModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
@@ -1902,8 +1902,8 @@
 
                     {/* Modal: Bestätigung */}
                     {confirmDialog && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDialog(null); }}>
-                            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDialog(null); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full max-w-sm">
                                 <div className="p-5">
                                     <h2 className="text-lg font-bold mb-2">Bestätigen</h2>
                                     <p className="text-sm text-gray-600">{confirmDialog.message}</p>
