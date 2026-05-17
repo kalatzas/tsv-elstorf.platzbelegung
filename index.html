@@ -31,6 +31,7 @@
             .no-print { display: none !important; }
             .print-overflow-visible { overflow: visible !important; }
             .print-min-0 { min-width: 0 !important; }
+            .app-shell { height: auto !important; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
     </style>
@@ -620,9 +621,12 @@
             };
 
             return (
-                <div className="max-w-7xl mx-auto p-4">
+                <div className="app-shell h-screen flex flex-col" style={{ height: '100dvh' }}>
+                    {/* ===== FIXIERTER OBERER BEREICH ===== */}
+                    <div className="flex-shrink-0 bg-gray-50">
+                        <div className="max-w-7xl mx-auto px-4 pt-4">
                     {/* Header */}
-                    <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">FC</div>
                             <div>
@@ -739,6 +743,12 @@
                         <button onClick={() => setCurrentWeek(0)} className="no-print hidden sm:block bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 transition-colors">Aktuelle Woche</button>
                     </div>
                     )}
+                        </div>
+                    </div>
+
+                    {/* ===== SCROLLBARER MITTELBEREICH ===== */}
+                    <div className="flex-1 overflow-y-auto print-overflow-visible">
+                        <div className="max-w-7xl mx-auto px-4 py-3">
 
                     {/* Leerer Plan: freundlicher Hinweis */}
                     {events.length === 0 && (
@@ -1196,35 +1206,18 @@
                         </div>
                     )}
 
-                    {/* Legende */}
-                    <div className="mt-4 bg-white rounded-lg shadow p-4">
-                        <h3 className="font-medium mb-2 text-sm">Legende</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        </div>
+                    </div>
+
+                    {/* ===== FIXIERTER UNTERER BEREICH: schmale Legende ===== */}
+                    <div className="flex-shrink-0 bg-white border-t no-print">
+                        <div className="max-w-7xl mx-auto px-3 py-2 flex gap-2 overflow-x-auto">
                             {Object.entries(eventTypes).map(([key, type]) => (
-                                <div key={key} className={`${type.color} text-white border rounded p-2 text-center text-xs font-medium`}>
-                                    {type.icon} {type.label}
-                                </div>
+                                <span key={key} className={`${type.color} text-white rounded px-2 py-1 text-xs whitespace-nowrap flex items-center gap-1`}>
+                                    <span>{type.icon}</span>
+                                    <span>{type.label}</span>
+                                </span>
                             ))}
-                        </div>
-                        <div className="mt-3">
-                            <h4 className="font-medium mb-2 text-sm">Plätze</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                                {fields.map(field => (
-                                    <div key={field.id} className={`${field.color} border rounded p-2 text-center text-xs font-medium text-gray-700`}>
-                                        {field.name} ({field.shortName})
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="mt-3">
-                            <h4 className="font-medium mb-2 text-sm">Positionen</h4>
-                            <div className="grid grid-cols-3 gap-2">
-                                {positions.filter(p => p.value).map(position => (
-                                    <div key={position.value} className="bg-gray-100 border rounded p-2 text-center text-xs font-medium text-gray-700">
-                                        {position.icon} {position.label} ({position.short})
-                                    </div>
-                                ))}
-                            </div>
                         </div>
                     </div>
 
