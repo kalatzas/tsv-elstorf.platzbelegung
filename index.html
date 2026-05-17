@@ -849,11 +849,7 @@
                 return filters.field || filters.type || filters.team;
             };
 
-            // Laufende und kommende Platzsperren (für den fixierten Banner)
             const todayISO = toISODate(new Date());
-            const activeClosures = closures
-                .filter(c => c.toDate >= todayISO)
-                .sort((a, b) => a.fromDate.localeCompare(b.fromDate));
 
             // Platzsperren-Hinweis innerhalb eines Tages
             const renderDayClosures = (iso) => {
@@ -933,31 +929,6 @@
                                 ))}
                             </div>
                         </div>
-                        {activeClosures.length > 0 && (
-                            <div className="mt-3 mb-1 bg-red-50 border border-red-200 rounded-lg px-3 py-2 no-print">
-                                <div className="flex items-center gap-1.5 text-red-800 text-sm font-semibold mb-1.5">
-                                    <Icon name="ban" className="w-4 h-4" /> Aktuelle Platzsperren
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {activeClosures.map(c => {
-                                        const f = fields.find(ff => ff.id === c.field);
-                                        const range = c.fromDate === c.toDate
-                                            ? formatISODate(c.fromDate)
-                                            : `${formatISODate(c.fromDate)} – ${formatISODate(c.toDate)}`;
-                                        return (
-                                            <span key={c.id} className="bg-white border border-red-200 text-red-800 text-xs rounded px-2 py-1 flex items-center gap-1.5">
-                                                <span className="font-bold">{f?.name || c.field}</span>
-                                                <span className="text-red-500">{range}</span>
-                                                {c.reason && <span className="text-gray-600">· {c.reason}</span>}
-                                                {canEdit && (
-                                                    <button onClick={() => deleteClosure(c.id)} aria-label="Sperre aufheben" className="text-red-400 hover:text-red-700 font-bold leading-none ml-0.5">×</button>
-                                                )}
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* Filter Panel - einblendbar über den Filter-Button */}
