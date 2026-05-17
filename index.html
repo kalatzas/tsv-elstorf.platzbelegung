@@ -33,6 +33,8 @@
             .print-min-0 { min-width: 0 !important; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
+        /* Mobil: heutiger Tag oben; ab Tablet wieder Mo–So-Reihenfolge */
+        @media (min-width: 640px) { .cal-day { order: 0 !important; } }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -93,6 +95,7 @@
             const [notifications, setNotifications] = useState([]);
             const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'calendar' : 'table'); // table, calendar, fields
             const [confirmDialog, setConfirmDialog] = useState(null);
+            const [showFilters, setShowFilters] = useState(false);
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
@@ -563,6 +566,7 @@
                                 <button onClick={() => setViewMode('fields')} title="Platzübersicht" aria-label="Platzübersicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1 ${viewMode === 'fields' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}>🏟️ <span>Plätze</span></button>
                             </div>
                             <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+                                <button onClick={() => setShowFilters(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}>🔍 Filter{hasActiveFilters() ? ' •' : ''}</button>
                                 <button onClick={() => requireEditor() && setShowSeriesModal(true)} className="flex-1 sm:flex-none bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors">🔄 Serie</button>
                                 <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors">📤 Export</button>
                                 <button onClick={() => requireEditor() && setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors">+ Termin</button>
@@ -575,7 +579,8 @@
                         </div>
                     </div>
 
-                    {/* Filter Panel - IMMER SICHTBAR */}
+                    {/* Filter Panel - einblendbar über den Filter-Button */}
+                    {showFilters && (
                     <div className="bg-white rounded-lg shadow p-4 mb-4 no-print">
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="font-medium text-sm flex items-center gap-2">
@@ -586,14 +591,17 @@
                                     </span>
                                 )}
                             </h3>
-                            {hasActiveFilters() && (
-                                <button 
-                                    onClick={clearFilters}
-                                    className="bg-gray-500 text-white px-2 py-1 rounded text-xs hover:bg-gray-600 transition-colors"
-                                >
-                                    Zurücksetzen
-                                </button>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {hasActiveFilters() && (
+                                    <button
+                                        onClick={clearFilters}
+                                        className="bg-gray-500 text-white px-2 py-1 rounded text-xs hover:bg-gray-600 transition-colors"
+                                    >
+                                        Zurücksetzen
+                                    </button>
+                                )}
+                                <button onClick={() => setShowFilters(false)} aria-label="Filter schließen" className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
@@ -636,6 +644,7 @@
                             </div>
                         )}
                     </div>
+                    )}
 
                     {/* Wochennavigation */}
                     <div className="mb-4 flex items-center justify-between bg-white rounded-lg shadow p-3">
@@ -644,7 +653,7 @@
                             <span className="font-medium text-sm">Woche vom {formatDate(getWeekStart(currentWeek))}</span>
                             <button onClick={() => setCurrentWeek(p => p + 1)} aria-label="Nächste Woche" className="no-print bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded text-sm transition-colors">→</button>
                         </div>
-                        <button onClick={() => setCurrentWeek(0)} className="no-print bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors">Aktuelle Woche</button>
+                        <button onClick={() => setCurrentWeek(0)} className="no-print hidden sm:block bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 transition-colors">Aktuelle Woche</button>
                     </div>
 
                     {/* Leerer Plan: freundlicher Hinweis */}
@@ -818,11 +827,16 @@
                     )}
 
                     {/* Kalenderansicht */}
-                    {viewMode === 'calendar' && (
+                    {viewMode === 'calendar' && (() => {
+                        const weekDates = getWeekDates(currentWeek);
+                        const todayIdx = weekDates.findIndex(d => d.isToday);
+                        return (
                         <div className="bg-white rounded-lg shadow p-2 print-overflow-visible">
                             <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
-                                {getWeekDates(currentWeek).map(({ day, date, month, isToday }) => (
-                                    <div key={day} className={`border rounded-lg flex flex-col ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
+                                {weekDates.map(({ day, date, month, isToday }, idx) => {
+                                    const mobilePos = todayIdx >= 0 ? ((idx - todayIdx + 7) % 7) : idx;
+                                    return (
+                                    <div key={day} style={{ order: mobilePos }} className={`cal-day border rounded-lg flex flex-col ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
                                         <div className={`p-2 text-center text-sm rounded-t-lg ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
                                             <span className="font-medium">{day}</span>
                                             <span className="text-xs text-gray-600 ml-1">{date}.{month}</span>
@@ -874,10 +888,12 @@
                                         )}
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Platzübersicht - wie Excel */}
                     {viewMode === 'fields' && (
