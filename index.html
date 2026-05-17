@@ -465,7 +465,11 @@
 
             // Bildschirmbreite überwachen (Handy vs. Desktop)
             useEffect(() => {
-                const onResize = () => setIsMobile(window.innerWidth < 768);
+                const onResize = () => {
+                    const mobile = window.innerWidth < 768;
+                    setIsMobile(mobile);
+                    if (mobile) setViewMode('calendar');
+                };
                 window.addEventListener('resize', onResize);
                 return () => window.removeEventListener('resize', onResize);
             }, []);
@@ -782,14 +786,18 @@
                             </div>
                         </div>
                         <div className="flex gap-2 flex-wrap no-print w-full sm:w-auto">
+                            {!isMobile && (
                             <div className="flex bg-gray-100 rounded p-1 w-full sm:w-auto">
                                 <button onClick={() => setViewMode('table')} title="Tabellenansicht" aria-label="Tabellenansicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${viewMode === 'table' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}><Icon name="table" /> <span>Tabelle</span></button>
                                 <button onClick={() => setViewMode('calendar')} title="Kalenderansicht" aria-label="Kalenderansicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${viewMode === 'calendar' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}><Icon name="calendar" /> <span>Kalender</span></button>
                                 <button onClick={() => setViewMode('fields')} title="Platzübersicht" aria-label="Platzübersicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${viewMode === 'fields' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}><Icon name="grid" /> <span>Plätze</span></button>
                             </div>
+                            )}
                             <div className="flex gap-2 flex-wrap w-full sm:w-auto">
                                 <button onClick={() => setShowFilters(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="filter" /> <span>Filter{hasActiveFilters() ? ' •' : ''}</span></button>
-                                <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
+                                {!isMobile && (
+                                    <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
+                                )}
                                 {canEdit && (
                                     <button onClick={() => setShowSeriesModal(true)} className="flex-1 sm:flex-none bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="repeat" /> <span>Serie</span></button>
                                 )}
@@ -797,9 +805,17 @@
                                     <button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="plus" /> <span>Termin</span></button>
                                 )}
                                 {FIREBASE_READY && (isEditor ? (
-                                    <button onClick={handleLogout} className="flex-1 sm:flex-none bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="unlock" /> <span>Abmelden</span></button>
+                                    isMobile ? (
+                                        <button onClick={handleLogout} title="Abmelden" aria-label="Abmelden" className="flex-none bg-gray-700 text-white p-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center"><Icon name="user" className="w-5 h-5" /></button>
+                                    ) : (
+                                        <button onClick={handleLogout} className="flex-1 sm:flex-none bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="unlock" /> <span>Abmelden</span></button>
+                                    )
                                 ) : (
-                                    <button onClick={() => setShowLoginModal(true)} className="flex-1 sm:flex-none bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300 transition-colors flex items-center justify-center gap-1.5"><Icon name="lock" /> <span>Anmelden</span></button>
+                                    isMobile ? (
+                                        <button onClick={() => setShowLoginModal(true)} title="Anmelden" aria-label="Anmelden" className="flex-none bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="user" className="w-5 h-5" /></button>
+                                    ) : (
+                                        <button onClick={() => setShowLoginModal(true)} className="flex-1 sm:flex-none bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300 transition-colors flex items-center justify-center gap-1.5"><Icon name="lock" /> <span>Anmelden</span></button>
+                                    )
                                 ))}
                             </div>
                         </div>
