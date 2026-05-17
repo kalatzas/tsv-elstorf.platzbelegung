@@ -134,7 +134,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.6.1'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.7.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -148,7 +148,6 @@
             const [showAddModal, setShowAddModal] = useState(false);
             const [editingEvent, setEditingEvent] = useState(null);
             const [showExportModal, setShowExportModal] = useState(false);
-            const [showSeriesModal, setShowSeriesModal] = useState(false);
             const [notifications, setNotifications] = useState([]);
             const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'calendar' : 'table'); // table, calendar, fields
             const [confirmDialog, setConfirmDialog] = useState(null);
@@ -205,12 +204,7 @@
 
             const [newEvent, setNewEvent] = useState({
                 field: '', day: '', time: '', duration: 1.5, type: 'training',
-                team: '', title: '', cabin: '', trainer: '', position: ''
-            });
-
-            const [seriesEvent, setSeriesEvent] = useState({
-                field: '', day: '', time: '', duration: 1.5, type: 'training',
-                team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10
+                team: '', title: '', cabin: '', trainer: '', position: '', isSeries: false, weeks: 10
             });
 
             const [newClosure, setNewClosure] = useState({ field: '', fromDate: '', toDate: '', reason: '' });
@@ -529,7 +523,6 @@
                 const handleEsc = (e) => {
                     if (e.key === 'Escape') {
                         setShowAddModal(false);
-                        setShowSeriesModal(false);
                         setShowExportModal(false);
                         setShowLoginModal(false);
                         setShowClosureModal(false);
@@ -686,8 +679,13 @@
                     return;
                 }
                 
+                const isSeries = !!newEvent.isSeries;
+                const weeks = Math.min(52, Math.max(1, parseInt(newEvent.weeks) || 1));
+
                 // Bei Platzsperre automatisch Team und Titel setzen
                 const eventToAdd = {...newEvent};
+                delete eventToAdd.isSeries;
+                delete eventToAdd.weeks;
                 if (eventToAdd.type === 'blocked') {
                     eventToAdd.team = 'SPERRE';
                     if (!eventToAdd.title) {
@@ -696,18 +694,33 @@
                 }
 
                 const commit = () => {
-                    commitEvents([...events, { ...eventToAdd, id: Date.now() }]);
-                    setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '' });
+                    if (isSeries) {
+                        const baseDate = getWeekStart(currentWeek);
+                        const dayIndex = weekdays.indexOf(eventToAdd.day);
+                        const seriesEvents = [];
+                        for (let week = 0; week < weeks; week++) {
+                            const eventDate = new Date(baseDate);
+                            eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
+                            seriesEvents.push({ ...eventToAdd, id: Date.now() + week, isSeriesEvent: true, weekOffset: week, eventDate: eventDate.toISOString() });
+                        }
+                        commitEvents([...events, ...seriesEvents]);
+                        addNotification(`${weeks} Serientermine erstellt`, 'success');
+                    } else {
+                        commitEvents([...events, { ...eventToAdd, id: Date.now() }]);
+                        addNotification('Termin hinzugefügt', 'success');
+                    }
+                    setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', isSeries: false, weeks: 10 });
                     setShowAddModal(false);
-                    addNotification('Termin hinzugefügt', 'success');
                 };
 
-                const conflicts = findConflicts(eventToAdd);
-                if (conflicts.length > 0) {
-                    askConfirm(conflictMessage(conflicts, eventToAdd), commit);
-                } else {
-                    commit();
+                if (!isSeries) {
+                    const conflicts = findConflicts(eventToAdd);
+                    if (conflicts.length > 0) {
+                        askConfirm(conflictMessage(conflicts, eventToAdd), commit);
+                        return;
+                    }
                 }
+                commit();
             };
 
             const updateEvent = () => {
@@ -745,35 +758,6 @@
                         }
                     });
                 });
-            };
-
-            const createSeriesEvents = () => {
-                if (!requireEditor()) return;
-                const error = validateEvent(seriesEvent);
-                if (error) {
-                    addNotification(error, 'warning');
-                    return;
-                }
-                const newEvents = [];
-                const baseDate = getWeekStart(currentWeek);
-                const dayIndex = weekdays.indexOf(seriesEvent.day);
-                
-                for (let week = 0; week < seriesEvent.weeks; week++) {
-                    const eventDate = new Date(baseDate);
-                    eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
-                    
-                    newEvents.push({ 
-                        ...seriesEvent, 
-                        id: Date.now() + week, 
-                        isSeriesEvent: true,
-                        weekOffset: week,
-                        eventDate: eventDate.toISOString()
-                    });
-                }
-                commitEvents([...events, ...newEvents]);
-                setSeriesEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10 });
-                setShowSeriesModal(false);
-                addNotification(`${newEvents.length} Serientermine erstellt`, 'success');
             };
 
             const addClosure = () => {
@@ -927,9 +911,6 @@
                                 <button onClick={() => setShowFilters(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="filter" /> <span>Filter{hasActiveFilters() ? ' •' : ''}</span></button>
                                 {!isMobile && (
                                     <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
-                                )}
-                                {canEdit && (
-                                    <button onClick={() => setShowSeriesModal(true)} className="flex-1 sm:flex-none bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="repeat" /> <span>Serie</span></button>
                                 )}
                                 {canEdit && (
                                     <button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="plus" /> <span>Termin</span></button>
@@ -1614,103 +1595,46 @@
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Position</label>
-                                            <select 
-                                                value={newEvent.position} 
-                                                onChange={(e) => setNewEvent({...newEvent, position: e.target.value})} 
+                                            <select
+                                                value={newEvent.position}
+                                                onChange={(e) => setNewEvent({...newEvent, position: e.target.value})}
                                                 className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                 disabled={newEvent.type === 'blocked'}
                                             >
                                                 {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                                             </select>
                                         </div>
+                                        <div className="border-t pt-4">
+                                            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newEvent.isSeries}
+                                                    onChange={(e) => setNewEvent({...newEvent, isSeries: e.target.checked})}
+                                                    className="w-4 h-4 accent-green-600"
+                                                />
+                                                <Icon name="repeat" className="w-4 h-4" />
+                                                Als wöchentliche Serie anlegen
+                                            </label>
+                                            {newEvent.isSeries && (
+                                                <div className="mt-3">
+                                                    <label className="block text-sm font-medium mb-1">Anzahl Wochen</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="52"
+                                                        value={newEvent.weeks}
+                                                        onChange={(e) => setNewEvent({...newEvent, weeks: parseInt(e.target.value) || 1})}
+                                                        className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                    />
+                                                    <p className="text-xs text-gray-500 mt-1">Wird ab der aktuell angezeigten Woche {newEvent.weeks || 1}× wöchentlich wiederholt.</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex gap-3 p-6 border-t bg-gray-50">
                                     <button onClick={() => setShowAddModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
-                                    <button onClick={addEvent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Hinzufügen</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Modal: Serientermine */}
-                    {showSeriesModal && (
-                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowSeriesModal(false); }}>
-                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex justify-between items-center p-6 border-b">
-                                    <h2 className="text-lg font-bold">Serientermine</h2>
-                                    <button onClick={() => setShowSeriesModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-6">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Platz *</label>
-                                            <select value={seriesEvent.field} onChange={(e) => setSeriesEvent({...seriesEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Tag *</label>
-                                            <select value={seriesEvent.day} onChange={(e) => setSeriesEvent({...seriesEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Zeit *</label>
-                                            <select value={seriesEvent.time} onChange={(e) => setSeriesEvent({...seriesEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Dauer (Stunden)</label>
-                                            <input type="number" step="0.5" min="0.5" max="3" value={seriesEvent.duration} onChange={(e) => setSeriesEvent({...seriesEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Typ *</label>
-                                            <select value={seriesEvent.type} onChange={(e) => setSeriesEvent({...seriesEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Team *</label>
-                                            <select value={seriesEvent.team} onChange={(e) => setSeriesEvent({...seriesEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Titel *</label>
-                                            <input type="text" value={seriesEvent.title} onChange={(e) => setSeriesEvent({...seriesEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="z.B. U15 Training" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Trainer</label>
-                                            <input type="text" value={seriesEvent.trainer} onChange={(e) => setSeriesEvent({...seriesEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Name des Trainers" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Kabine</label>
-                                            <select value={seriesEvent.cabin} onChange={(e) => setSeriesEvent({...seriesEvent, cabin: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {cabins.map(c => <option key={c} value={c}>{c}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Position</label>
-                                            <select value={seriesEvent.position} onChange={(e) => setSeriesEvent({...seriesEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                                                {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Anzahl Wochen</label>
-                                            <input type="number" min="1" max="52" value={seriesEvent.weeks} onChange={(e) => setSeriesEvent({...seriesEvent, weeks: parseInt(e.target.value) || 10})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex gap-3 p-6 border-t bg-gray-50">
-                                    <button onClick={() => setShowSeriesModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
-                                    <button onClick={createSeriesEvents} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Erstellen</button>
+                                    <button onClick={addEvent} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm transition-colors">{newEvent.isSeries ? 'Serie anlegen' : 'Hinzufügen'}</button>
                                 </div>
                             </div>
                         </div>
