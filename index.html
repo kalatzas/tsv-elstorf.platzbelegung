@@ -4,21 +4,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Platzbelegungsplaner</title>
+
+    <!-- PWA: installierbar auf Handy & Desktop -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#16a34a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Platzplan">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" href="icon-192.png">
+
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Firebase: geteilter Cloud-Plan -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 </head>
 <body class="bg-gray-50">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-        
+
+        // ============================================================
+        //  FIREBASE-KONFIGURATION
+        //  Hier die Werte aus der Firebase Console eintragen.
+        //  Schritt-für-Schritt-Anleitung: siehe README.md
+        //  Solange hier "HIER_EINTRAGEN" steht, läuft die App im
+        //  lokalen Modus (Daten nur auf diesem Gerät, kein Sync).
+        // ============================================================
+        const firebaseConfig = {
+            apiKey: "HIER_EINTRAGEN",
+            authDomain: "HIER_EINTRAGEN",
+            projectId: "HIER_EINTRAGEN",
+            storageBucket: "HIER_EINTRAGEN",
+            messagingSenderId: "HIER_EINTRAGEN",
+            appId: "HIER_EINTRAGEN"
+        };
+        // E-Mail des gemeinsamen Bearbeiter-Kontos (in Firebase
+        // Authentication anlegen). Das Passwort dazu ist das
+        // "Bearbeiten-Passwort", das im Verein geteilt wird.
+        const EDITOR_EMAIL = "bearbeiter@tsv-elstorf.de";
+        // ============================================================
+
+        const FIREBASE_READY = firebaseConfig.apiKey && firebaseConfig.apiKey !== "HIER_EINTRAGEN";
+        let db = null, auth = null;
+        if (FIREBASE_READY) {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                auth = firebase.auth();
+                db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+            } catch (e) {
+                console.error('Firebase-Initialisierung fehlgeschlagen:', e);
+            }
+        }
+        // Der gesamte Plan liegt in einem Dokument: plans/tsv-elstorf
+        const planDoc = () => db.collection('plans').doc('tsv-elstorf');
+
         const App = () => {
-            const APP_VERSION = '1.2.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.0.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
+            const [isEditor, setIsEditor] = useState(false);
+            const [showLoginModal, setShowLoginModal] = useState(false);
+            const [loginPassword, setLoginPassword] = useState('');
+            const [loggingIn, setLoggingIn] = useState(false);
+            const [cloudStatus, setCloudStatus] = useState(FIREBASE_READY ? 'connecting' : 'local');
             const [showAddModal, setShowAddModal] = useState(false);
             const [editingEvent, setEditingEvent] = useState(null);
             const [showExportModal, setShowExportModal] = useState(false);
@@ -204,6 +260,7 @@
                         setShowAddModal(false);
                         setShowSeriesModal(false);
                         setShowExportModal(false);
+                        setShowLoginModal(false);
                         setEditingEvent(null);
                     }
                 };
@@ -211,30 +268,43 @@
                 window.addEventListener('keydown', handleEsc);
                 return () => window.removeEventListener('keydown', handleEsc);
             }, []);
+            // Beispiel-Termine (nur für den lokalen Modus ohne Firebase)
+            const EXAMPLE_EVENTS = [
+                { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
+                { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
+            ];
+
+            // Daten laden: Firebase-Echtzeit-Sync oder lokaler Fallback
             useEffect(() => {
-                try {
-                    const saved = localStorage.getItem('football-events');
-                    if (saved) {
-                        setEvents(JSON.parse(saved));
-                    } else {
-                        const examples = [
-                            { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' },
-                            { id: 2, field: 'platz1', day: 'Dienstag', time: '18:00', duration: 2, type: 'match', team: 'U16', title: 'U16 vs FC Hamburg', cabin: 'Kabine 2', trainer: 'Anna Schmidt', position: 'li' }
-                        ];
-                        setEvents(examples);
-                        localStorage.setItem('football-events', JSON.stringify(examples));
+                if (!FIREBASE_READY) {
+                    try {
+                        const saved = localStorage.getItem('football-events');
+                        setEvents(saved ? JSON.parse(saved) : EXAMPLE_EVENTS);
+                    } catch (e) {
+                        console.error('Fehler beim Laden der Daten:', e);
+                        setEvents(EXAMPLE_EVENTS);
                     }
-                } catch (e) {
-                    console.error('Fehler beim Laden der Daten:', e);
-                    const examples = [
-                        { id: 1, field: 'platz2', day: 'Montag', time: '17:00', duration: 1.5, type: 'training', team: 'U15', title: 'U15 Training', cabin: 'Kabine 1', trainer: 'Max Mustermann', position: 'mi' }
-                    ];
-                    setEvents(examples);
+                    return;
                 }
+                const unsubData = planDoc().onSnapshot(
+                    (snap) => {
+                        const data = snap.exists ? snap.data() : null;
+                        setEvents(data && Array.isArray(data.events) ? data.events : []);
+                        setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
+                    },
+                    (err) => {
+                        console.error('Firestore-Fehler:', err);
+                        setCloudStatus('error');
+                        addNotification('⚠️ Cloud-Verbindung fehlgeschlagen', 'warning');
+                    }
+                );
+                const unsubAuth = auth.onAuthStateChanged((user) => setIsEditor(!!user));
+                return () => { unsubData(); unsubAuth(); };
             }, []);
 
+            // Lokaler Fallback: in localStorage sichern (nur ohne Firebase)
             useEffect(() => {
-                if (events.length > 0) {
+                if (!FIREBASE_READY && events.length > 0) {
                     try {
                         localStorage.setItem('football-events', JSON.stringify(events));
                     } catch (e) {
@@ -243,6 +313,47 @@
                     }
                 }
             }, [events]);
+
+            // Termine speichern: lokal sofort, in der Cloud für alle
+            const commitEvents = (next) => {
+                setEvents(next);
+                if (FIREBASE_READY) {
+                    planDoc().set({ events: next, updatedAt: Date.now() })
+                        .catch((e) => {
+                            console.error('Cloud-Speichern fehlgeschlagen:', e);
+                            addNotification('⚠️ Speichern in der Cloud fehlgeschlagen', 'warning');
+                        });
+                }
+            };
+
+            // Prüft, ob bearbeitet werden darf; sonst Anmelde-Dialog
+            const requireEditor = () => {
+                if (!FIREBASE_READY || isEditor) return true;
+                setShowLoginModal(true);
+                return false;
+            };
+
+            const handleLogin = () => {
+                if (!FIREBASE_READY) {
+                    addNotification('⚠️ Firebase ist noch nicht konfiguriert', 'warning');
+                    return;
+                }
+                if (!loginPassword) return;
+                setLoggingIn(true);
+                auth.signInWithEmailAndPassword(EDITOR_EMAIL, loginPassword)
+                    .then(() => {
+                        setShowLoginModal(false);
+                        setLoginPassword('');
+                        addNotification('🔓 Bearbeiten freigeschaltet', 'success');
+                    })
+                    .catch(() => addNotification('❌ Falsches Passwort', 'warning'))
+                    .finally(() => setLoggingIn(false));
+            };
+
+            const handleLogout = () => {
+                if (FIREBASE_READY && auth) auth.signOut();
+                addNotification('🔒 Bearbeiten gesperrt', 'info');
+            };
 
             const validateEvent = (event) => {
                 if (event.type === 'blocked') {
@@ -260,6 +371,7 @@
             };
 
             const addEvent = () => {
+                if (!requireEditor()) return;
                 const error = validateEvent(newEvent);
                 if (error) {
                     addNotification(error, 'warning');
@@ -275,32 +387,35 @@
                     }
                 }
                 
-                setEvents(prev => [...prev, { ...eventToAdd, id: Date.now() }]);
+                commitEvents([...events, { ...eventToAdd, id: Date.now() }]);
                 setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '' });
                 setShowAddModal(false);
                 addNotification('✅ Termin hinzugefügt', 'success');
             };
 
             const updateEvent = () => {
+                if (!requireEditor()) return;
                 const error = validateEvent(editingEvent);
                 if (error) {
                     addNotification(error, 'warning');
                     return;
                 }
-                setEvents(prev => prev.map(e => e.id === editingEvent.id ? editingEvent : e));
+                commitEvents(events.map(e => e.id === editingEvent.id ? editingEvent : e));
                 setEditingEvent(null);
                 addNotification('✏️ Termin aktualisiert', 'success');
             };
 
             const deleteEvent = (id) => {
+                if (!requireEditor()) return;
                 if (confirm('Termin löschen?')) {
-                    setEvents(prev => prev.filter(e => e.id !== id));
+                    commitEvents(events.filter(e => e.id !== id));
                     setEditingEvent(null); // Modal schließen
                     addNotification('🗑️ Termin gelöscht', 'info');
                 }
             };
 
             const createSeriesEvents = () => {
+                if (!requireEditor()) return;
                 const error = validateEvent(seriesEvent);
                 if (error) {
                     addNotification(error, 'warning');
@@ -322,7 +437,7 @@
                         eventDate: eventDate.toISOString()
                     });
                 }
-                setEvents(prev => [...prev, ...newEvents]);
+                commitEvents([...events, ...newEvents]);
                 setSeriesEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: '', trainer: '', position: '', weeks: 10 });
                 setShowSeriesModal(false);
                 addNotification(`📅 ${newEvents.length} Serientermine erstellt`, 'success');
@@ -365,13 +480,14 @@
             const importFromJSON = (event) => {
                 const file = event.target.files[0];
                 if (!file) return;
-                
+                if (!requireEditor()) { event.target.value = ''; return; }
+
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
                         const importedEvents = JSON.parse(e.target.result);
                         if (Array.isArray(importedEvents)) {
-                            setEvents(importedEvents);
+                            commitEvents(importedEvents);
                             addNotification('📂 Daten importiert', 'success');
                         } else {
                             addNotification('❌ Ungültiges Dateiformat', 'warning');
@@ -400,7 +516,14 @@
                             <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">FC</div>
                             <div>
                                 <h1 className="text-2xl font-bold">Platzbelegungsplaner</h1>
-                                <p className="text-gray-600 text-sm">Fußballverein Jugendabteilung • v{APP_VERSION}</p>
+                                <p className="text-gray-600 text-sm flex items-center gap-2 flex-wrap">
+                                    <span>Fußballverein Jugendabteilung • v{APP_VERSION}</span>
+                                    {cloudStatus === 'online' && <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">☁️ Synchronisiert</span>}
+                                    {cloudStatus === 'offline' && <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full text-xs">📴 Offline</span>}
+                                    {cloudStatus === 'connecting' && <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs">⏳ Verbinde…</span>}
+                                    {cloudStatus === 'error' && <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs">⚠️ Verbindungsfehler</span>}
+                                    {cloudStatus === 'local' && <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs">💾 Lokaler Modus</span>}
+                                </p>
                             </div>
                         </div>
                         <div className="flex gap-2 flex-wrap">
@@ -409,9 +532,14 @@
                                 <button onClick={() => setViewMode('calendar')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'calendar' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>📅</button>
                                 <button onClick={() => setViewMode('fields')} className={`px-2 py-1 rounded text-sm transition-colors ${viewMode === 'fields' ? 'bg-white shadow' : 'hover:bg-gray-200'}`}>🏟️</button>
                             </div>
-                            <button onClick={() => setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 transition-colors">Serie</button>
+                            <button onClick={() => requireEditor() && setShowSeriesModal(true)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700 transition-colors">Serie</button>
                             <button onClick={() => setShowExportModal(true)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">Export</button>
-                            <button onClick={() => setShowAddModal(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">+ Hinzufügen</button>
+                            <button onClick={() => requireEditor() && setShowAddModal(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">+ Hinzufügen</button>
+                            {FIREBASE_READY && (isEditor ? (
+                                <button onClick={handleLogout} className="bg-gray-700 text-white px-3 py-1 rounded text-sm hover:bg-gray-800 transition-colors">🔓 Abmelden</button>
+                            ) : (
+                                <button onClick={() => setShowLoginModal(true)} className="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm hover:bg-gray-300 transition-colors">🔒 Anmelden</button>
+                            ))}
                         </div>
                     </div>
 
@@ -1261,8 +1389,35 @@
                                         🖨️ Drucken
                                     </button>
                                     <hr className="my-2" />
-                                    <button onClick={() => { if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { setEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                    <button onClick={() => { if(!requireEditor()) { setShowExportModal(false); return; } if(confirm('Alle Termine löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) { commitEvents([]); localStorage.removeItem('football-events'); addNotification('🗑️ Alle Termine gelöscht', 'info'); } setShowExportModal(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
                                         🗑️ Alles löschen
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal: Anmelden zum Bearbeiten */}
+                    {showLoginModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}>
+                            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+                                <div className="flex items-center justify-between p-4 border-b">
+                                    <h2 className="text-lg font-bold">🔒 Zum Bearbeiten anmelden</h2>
+                                    <button onClick={() => setShowLoginModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="p-4 space-y-3">
+                                    <p className="text-sm text-gray-600">Der Plan ist für alle sichtbar. Zum Hinzufügen oder Ändern von Terminen bitte das gemeinsame Passwort eingeben.</p>
+                                    <input
+                                        type="password"
+                                        autoFocus
+                                        value={loginPassword}
+                                        onChange={(e) => setLoginPassword(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+                                        placeholder="Passwort"
+                                        className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                    <button onClick={handleLogin} disabled={loggingIn} className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2 px-4 rounded-md transition-colors">
+                                        {loggingIn ? 'Anmelden…' : 'Anmelden'}
                                     </button>
                                 </div>
                             </div>
@@ -1287,6 +1442,15 @@
         };
 
         ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+
+    <!-- PWA: Service Worker für Installierbarkeit & Offline-Nutzung -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch((e) => console.error('Service Worker:', e));
+            });
+        }
     </script>
 </body>
 </html>

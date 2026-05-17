@@ -1,0 +1,17 @@
+{
+  "name": "Platzbelegungsplaner TSV Elstorf",
+  "short_name": "Platzplan",
+  "description": "Geteilter Platzbelegungsplan für Fußballvereine",
+  "lang": "de",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f9fafb",
+  "theme_color": "#16a34a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
