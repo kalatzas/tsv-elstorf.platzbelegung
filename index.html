@@ -120,7 +120,9 @@
             users: <g><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></g>,
             trophy: <g><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></g>,
             history: <g><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></g>,
-            ban: <g><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></g>
+            ban: <g><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></g>,
+            smartphone: <g><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></g>,
+            monitor: <g><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></g>
         };
 
         const Icon = ({ name, className = 'w-4 h-4', spin = false }) => {
@@ -134,7 +136,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.8.1'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.8.2'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -153,7 +155,9 @@
             const [headerStyle, setHeaderStyle] = useState('standard'); // Vorschau: 'standard' | 'a' | 'c'
             const [confirmDialog, setConfirmDialog] = useState(null);
             const [showFilters, setShowFilters] = useState(false);
-            const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+            const [isNarrowScreen, setIsNarrowScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+            const [previewMobile, setPreviewMobile] = useState(false);
+            const isMobile = isNarrowScreen || previewMobile;
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
@@ -533,7 +537,7 @@
             useEffect(() => {
                 const onResize = () => {
                     const mobile = window.innerWidth < 768;
-                    setIsMobile(mobile);
+                    setIsNarrowScreen(mobile);
                     if (mobile) setViewMode('calendar');
                 };
                 window.addEventListener('resize', onResize);
@@ -915,8 +919,11 @@
                 if (headerStyle === 'c') {
                     return (
                         <div className="px-3 py-2.5 rounded-t-lg bg-white flex items-center justify-between border-b border-gray-100">
-                            <span className="text-sm font-bold text-slate-900">{dayName}{isToday && <span className="text-green-600"> · heute</span>}</span>
-                            <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${isToday ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{dateNum}.{month}.</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-slate-900">{dayName}</span>
+                                <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${isToday ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{dateNum}.{month}.</span>
+                            </div>
+                            {isToday && <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">heute</span>}
                         </div>
                     );
                 }
@@ -949,7 +956,7 @@
             };
 
             return (
-                <div className="app-shell h-screen flex flex-col" style={{ height: '100dvh' }}>
+                <div className={`app-shell h-screen flex flex-col ${previewMobile ? 'border-x border-gray-300 shadow-2xl' : ''}`} style={{ height: '100dvh', ...(previewMobile ? { maxWidth: '420px', margin: '0 auto' } : {}) }}>
                     {/* ===== FIXIERTER OBERER BEREICH ===== */}
                     <div className="flex-shrink-0 bg-gray-50">
                         <div className="max-w-7xl mx-auto px-4 pt-4">
@@ -1934,6 +1941,17 @@
                                 </div>
                             </div>
                         </div>
+                    )}
+
+                    {/* Umschalter: Mobil-Vorschau auf dem Desktop */}
+                    {!isNarrowScreen && (
+                        <button
+                            onClick={() => { const next = !previewMobile; setPreviewMobile(next); if (next) setViewMode('calendar'); }}
+                            className="no-print fixed bottom-4 left-4 z-50 bg-slate-800 text-white text-xs font-medium px-3 py-2 rounded-full shadow-lg flex items-center gap-1.5 hover:bg-slate-700 transition-colors"
+                        >
+                            <Icon name={previewMobile ? 'monitor' : 'smartphone'} className="w-4 h-4" />
+                            {previewMobile ? 'Desktop-Ansicht' : 'Mobil-Vorschau'}
+                        </button>
                     )}
 
                     {/* Notifications */}
