@@ -33,8 +33,6 @@
             .print-min-0 { min-width: 0 !important; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
-        /* Mobil: heutiger Tag oben; ab Tablet wieder Mo–So-Reihenfolge */
-        @media (min-width: 640px) { .cal-day { order: 0 !important; } }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -96,6 +94,7 @@
             const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'calendar' : 'table'); // table, calendar, fields
             const [confirmDialog, setConfirmDialog] = useState(null);
             const [showFilters, setShowFilters] = useState(false);
+            const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
             const [currentWeek, setCurrentWeek] = useState(0);
             const [hoveredEvent, setHoveredEvent] = useState(null);
             const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
@@ -166,6 +165,44 @@
                 });
             };
 
+            // Termine eines bestimmten Wochentags in einer bestimmten Woche
+            const getEventsForDay = (dayName, weekOffset) => {
+                return events.filter(event => {
+                    if (event.day !== dayName) return false;
+                    if (event.weekOffset !== undefined && event.weekOffset !== weekOffset) return false;
+                    if (filters.field && event.field !== filters.field) return false;
+                    if (filters.type && event.type !== filters.type) return false;
+                    if (filters.team && event.team !== filters.team) return false;
+                    return true;
+                });
+            };
+
+            // Liste kommender Tage ab heute (für die mobile Scroll-Ansicht)
+            const getUpcomingDays = (count) => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const thisMonday = getWeekStart(0);
+                thisMonday.setHours(0, 0, 0, 0);
+                const list = [];
+                for (let i = 0; i < count; i++) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() + i);
+                    const dow = (d.getDay() + 6) % 7; // 0 = Montag
+                    const dMonday = new Date(d);
+                    dMonday.setDate(d.getDate() - dow);
+                    const weekOffset = Math.round((dMonday - thisMonday) / (7 * 86400000));
+                    list.push({
+                        date: d,
+                        dayName: weekdays[dow],
+                        dateNum: d.getDate(),
+                        month: d.getMonth() + 1,
+                        weekOffset,
+                        isToday: i === 0
+                    });
+                }
+                return list;
+            };
+
             // Hilfsfunktionen
             const getWeekStart = (weekOffset = 0) => {
                 const today = new Date();
@@ -209,6 +246,40 @@
 
             const handleEventLeave = () => {
                 setHoveredEvent(null);
+            };
+
+            // Termin-Karte (Kalenderansicht – Desktop und Handy)
+            const renderEventCard = (event) => {
+                const eventType = eventTypes[event.type];
+                const field = fields.find(f => f.id === event.field);
+                return (
+                    <div
+                        key={event.id}
+                        className={`${field?.color} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow`}
+                        onClick={() => setEditingEvent({...event})}
+                        onMouseEnter={(e) => handleEventHover(event, e)}
+                        onMouseLeave={handleEventLeave}
+                        onMouseMove={(e) => {
+                            if (hoveredEvent?.id === event.id) {
+                                setHoverPosition({ x: e.clientX, y: e.clientY });
+                            }
+                        }}
+                    >
+                        <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t-lg font-medium flex items-center gap-1`}>
+                            <span>{eventType.icon}</span>
+                            <span className="truncate">{eventType.label}</span>
+                        </div>
+                        <div className="p-2">
+                            <div className="font-semibold text-gray-800">{event.time} - {getEventEndTime(event)}</div>
+                            <div className="font-semibold text-gray-800">{event.team}</div>
+                            <div className="text-gray-600">{field?.name}</div>
+                            {event.trainer && <div className="text-gray-600">👨‍🏫 {event.trainer}</div>}
+                            {event.cabin && <div className="text-gray-600">🚪 {event.cabin}</div>}
+                            {event.position && <div className="text-gray-600">{positions.find(p => p.value === event.position)?.icon} {positions.find(p => p.value === event.position)?.label}</div>}
+                            {event.isSeriesEvent && <div className="text-gray-600">🔄 Serie</div>}
+                        </div>
+                    </div>
+                );
             };
 
             // Hilfsfunktion für Event-Positionierung
@@ -278,6 +349,13 @@
             const removeNotification = (id) => {
                 setNotifications(prev => prev.filter(n => n.id !== id));
             };
+
+            // Bildschirmbreite überwachen (Handy vs. Desktop)
+            useEffect(() => {
+                const onResize = () => setIsMobile(window.innerWidth < 768);
+                window.addEventListener('resize', onResize);
+                return () => window.removeEventListener('resize', onResize);
+            }, []);
 
             // ESC-Taste Handler
             useEffect(() => {
@@ -567,9 +645,13 @@
                             </div>
                             <div className="flex gap-2 flex-wrap w-full sm:w-auto">
                                 <button onClick={() => setShowFilters(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}>🔍 Filter{hasActiveFilters() ? ' •' : ''}</button>
-                                <button onClick={() => requireEditor() && setShowSeriesModal(true)} className="flex-1 sm:flex-none bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors">🔄 Serie</button>
                                 <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors">📤 Export</button>
-                                <button onClick={() => requireEditor() && setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors">+ Termin</button>
+                                {canEdit && (
+                                    <button onClick={() => setShowSeriesModal(true)} className="flex-1 sm:flex-none bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors">🔄 Serie</button>
+                                )}
+                                {canEdit && (
+                                    <button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors">+ Termin</button>
+                                )}
                                 {FIREBASE_READY && (isEditor ? (
                                     <button onClick={handleLogout} className="flex-1 sm:flex-none bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors">🔓 Abmelden</button>
                                 ) : (
@@ -646,7 +728,8 @@
                     </div>
                     )}
 
-                    {/* Wochennavigation */}
+                    {/* Wochennavigation (in der mobilen Kalenderansicht ausgeblendet – dort scrollt man) */}
+                    {!(isMobile && viewMode === 'calendar') && (
                     <div className="mb-4 flex items-center justify-between bg-white rounded-lg shadow p-3">
                         <div className="flex items-center gap-2 sm:gap-3">
                             <button onClick={() => setCurrentWeek(p => p - 1)} aria-label="Vorherige Woche" className="no-print bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded text-sm transition-colors">←</button>
@@ -655,6 +738,7 @@
                         </div>
                         <button onClick={() => setCurrentWeek(0)} className="no-print hidden sm:block bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 transition-colors">Aktuelle Woche</button>
                     </div>
+                    )}
 
                     {/* Leerer Plan: freundlicher Hinweis */}
                     {events.length === 0 && (
@@ -826,74 +910,62 @@
                         </div>
                     )}
 
-                    {/* Kalenderansicht */}
-                    {viewMode === 'calendar' && (() => {
-                        const weekDates = getWeekDates(currentWeek);
-                        const todayIdx = weekDates.findIndex(d => d.isToday);
-                        return (
+                    {/* Kalenderansicht – Handy: durchgehend scrollbare Tagesliste */}
+                    {viewMode === 'calendar' && isMobile && (
+                        <div className="space-y-2 print-overflow-visible">
+                            {getUpcomingDays(42).map(({ date, dayName, dateNum, month, weekOffset, isToday }) => {
+                                const dayEvents = getEventsForDay(dayName, weekOffset)
+                                    .sort((a, b) => a.time.localeCompare(b.time));
+                                return (
+                                    <div key={date.toISOString()} className={`bg-white border rounded-lg ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
+                                        <div className={`p-2 text-sm rounded-t-lg flex items-center justify-between ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                            <span className="font-medium">{dayName}, {dateNum}.{month}.</span>
+                                            {isToday && <span className="text-xs text-green-700 font-bold">heute</span>}
+                                        </div>
+                                        <div className="p-2 space-y-1">
+                                            {dayEvents.length === 0 && (
+                                                <div className="text-xs text-gray-400 py-1">Keine Termine</div>
+                                            )}
+                                            {dayEvents.map(event => renderEventCard(event))}
+                                            {canEdit && (
+                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day: dayName}); setShowAddModal(true); }}>
+                                                    + Hinzufügen
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Kalenderansicht – Desktop/Tablet: Wochenraster */}
+                    {viewMode === 'calendar' && !isMobile && (
                         <div className="bg-white rounded-lg shadow p-2 print-overflow-visible">
-                            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
-                                {weekDates.map(({ day, date, month, isToday }, idx) => {
-                                    const mobilePos = todayIdx >= 0 ? ((idx - todayIdx + 7) % 7) : idx;
-                                    return (
-                                    <div key={day} style={{ order: mobilePos }} className={`cal-day border rounded-lg flex flex-col ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
+                            <div className="grid grid-cols-7 gap-2">
+                                {getWeekDates(currentWeek).map(({ day, date, month, isToday }) => (
+                                    <div key={day} className={`border rounded-lg flex flex-col ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
                                         <div className={`p-2 text-center text-sm rounded-t-lg ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
                                             <span className="font-medium">{day}</span>
                                             <span className="text-xs text-gray-600 ml-1">{date}.{month}</span>
                                             {isToday && <span className="text-xs text-green-700 font-bold ml-1">• heute</span>}
                                         </div>
                                         <div className="p-2 space-y-1 flex-1 min-h-[60px]">
-                                        {getFilteredEvents()
-                                            .filter(e => e.day === day)
-                                            .sort((a, b) => a.time.localeCompare(b.time))
-                                            .map(event => {
-                                                const eventType = eventTypes[event.type];
-                                                const field = fields.find(f => f.id === event.field);
-                                                return (
-                                                    <div 
-                                                        key={event.id} 
-                                                        className={`${field?.color} border rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow`} 
-                                                        onClick={() => setEditingEvent({...event})}
-                                                        onMouseEnter={(e) => handleEventHover(event, e)}
-                                                        onMouseLeave={handleEventLeave}
-                                                        onMouseMove={(e) => {
-                                                            if (hoveredEvent?.id === event.id) {
-                                                                setHoverPosition({ x: e.clientX, y: e.clientY });
-                                                            }
-                                                        }}
-                                                    >
-                                                        {/* Typ-Header */}
-                                                        <div className={`${eventType.color} text-white text-xs px-2 py-1 rounded-t-lg font-medium flex items-center gap-1`}>
-                                                            <span>{eventType.icon}</span>
-                                                            <span className="truncate">{eventType.label}</span>
-                                                        </div>
-                                                        
-                                                        {/* Event Content */}
-                                                        <div className="p-2">
-                                                            <div className="font-semibold text-gray-800">{event.time} - {getEventEndTime(event)}</div>
-                                                            <div className="font-semibold text-gray-800">{event.team}</div>
-                                                            <div className="text-gray-600">{field?.name}</div>
-                                                            {event.trainer && <div className="text-gray-600">👨‍🏫 {event.trainer}</div>}
-                                                            {event.cabin && <div className="text-gray-600">🚪 {event.cabin}</div>}
-                                                            {event.position && <div className="text-gray-600">{positions.find(p => p.value === event.position)?.icon} {positions.find(p => p.value === event.position)?.label}</div>}
-                                                            {event.isSeriesEvent && <div className="text-gray-600">🔄 Serie</div>}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        {canEdit && (
-                                            <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => { if (!requireEditor()) return; setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
-                                                + Hinzufügen
-                                            </div>
-                                        )}
+                                            {getFilteredEvents()
+                                                .filter(e => e.day === day)
+                                                .sort((a, b) => a.time.localeCompare(b.time))
+                                                .map(event => renderEventCard(event))}
+                                            {canEdit && (
+                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
+                                                    + Hinzufügen
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                    );
-                                })}
+                                ))}
                             </div>
                         </div>
-                        );
-                    })()}
+                    )}
 
                     {/* Platzübersicht - wie Excel */}
                     {viewMode === 'fields' && (
