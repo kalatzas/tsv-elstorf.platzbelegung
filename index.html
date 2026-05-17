@@ -134,7 +134,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.8.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.8.1'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -150,6 +150,7 @@
             const [showExportModal, setShowExportModal] = useState(false);
             const [notifications, setNotifications] = useState([]);
             const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'calendar' : 'table'); // table, calendar, fields
+            const [headerStyle, setHeaderStyle] = useState('standard'); // Vorschau: 'standard' | 'a' | 'c'
             const [confirmDialog, setConfirmDialog] = useState(null);
             const [showFilters, setShowFilters] = useState(false);
             const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -898,6 +899,35 @@
 
             const todayISO = toISODate(new Date());
 
+            // Vorschau: Tageskopf in verschiedenen Designvarianten
+            const renderMobileDayHeader = (dayName, dateNum, month, isToday) => {
+                if (headerStyle === 'a') {
+                    return (
+                        <div className="px-3 py-2.5 rounded-t-lg bg-white flex items-center justify-between border-b border-gray-100">
+                            <div className="flex items-center gap-2.5">
+                                <span className={`w-1.5 h-5 rounded-full ${isToday ? 'bg-green-600' : 'bg-slate-400'}`}></span>
+                                <span className="text-sm"><span className="font-bold text-slate-900">{dayName}</span> <span className="text-slate-500">{dateNum}.{month}.</span></span>
+                            </div>
+                            {isToday && <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">heute</span>}
+                        </div>
+                    );
+                }
+                if (headerStyle === 'c') {
+                    return (
+                        <div className="px-3 py-2.5 rounded-t-lg bg-white flex items-center justify-between border-b border-gray-100">
+                            <span className="text-sm font-bold text-slate-900">{dayName}{isToday && <span className="text-green-600"> · heute</span>}</span>
+                            <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${isToday ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{dateNum}.{month}.</span>
+                        </div>
+                    );
+                }
+                return (
+                    <div className={`p-2 text-sm rounded-t-lg flex items-center justify-between ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <span className="font-medium">{dayName}, {dateNum}.{month}.</span>
+                        {isToday && <span className="text-xs text-green-700 font-bold">heute</span>}
+                    </div>
+                );
+            };
+
             // Platzsperren-Hinweis innerhalb eines Tages
             const renderDayClosures = (iso) => {
                 const dayClosures = closuresOnDate(iso);
@@ -1241,15 +1271,18 @@
                     {/* Kalenderansicht – Handy: durchgehend scrollbare Tagesliste */}
                     {dataLoaded && viewMode === 'calendar' && isMobile && (
                         <div className="space-y-2 print-overflow-visible">
+                            <div className="no-print bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-2 text-xs flex-wrap">
+                                <span className="font-semibold text-amber-800">Vorschau Tageskopf:</span>
+                                {[['standard', 'Standard'], ['a', 'A — Streifen'], ['c', 'C — Badge']].map(([k, label]) => (
+                                    <button key={k} onClick={() => setHeaderStyle(k)} className={`px-2 py-1 rounded transition-colors ${headerStyle === k ? 'bg-amber-600 text-white' : 'bg-white border border-amber-300 text-amber-800'}`}>{label}</button>
+                                ))}
+                            </div>
                             {getUpcomingDays(42).map(({ date, dayName, dateNum, month, weekOffset, isToday }) => {
                                 const dayEvents = getEventsForDay(dayName, weekOffset)
                                     .sort((a, b) => a.time.localeCompare(b.time));
                                 return (
                                     <div key={date.toISOString()} className={`bg-white border rounded-lg ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
-                                        <div className={`p-2 text-sm rounded-t-lg flex items-center justify-between ${isToday ? 'bg-green-100' : 'bg-gray-100'}`}>
-                                            <span className="font-medium">{dayName}, {dateNum}.{month}.</span>
-                                            {isToday && <span className="text-xs text-green-700 font-bold">heute</span>}
-                                        </div>
+                                        {renderMobileDayHeader(dayName, dateNum, month, isToday)}
                                         <div className="p-2 space-y-1">
                                             {renderDayClosures(toISODate(date))}
                                             {dayEvents.length === 0 && (
