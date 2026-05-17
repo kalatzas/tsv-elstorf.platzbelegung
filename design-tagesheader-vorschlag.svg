@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="720" viewBox="0 0 480 720" font-family="Helvetica, Arial, sans-serif">
+  <rect width="480" height="720" fill="#f3f4f6"/>
+
+  <!-- Titel -->
+  <text x="30" y="38" font-size="22" font-weight="700" fill="#111827">Designvorschläge: Tagesdatum-Kopf</text>
+  <text x="30" y="60" font-size="13" fill="#6b7280">Je Variante oben ein normaler Tag, darunter der Zustand „heute".</text>
+
+  <!-- ============ A — Akzentstreifen links ============ -->
+  <text x="30" y="92" font-size="15" font-weight="700" fill="#374151">A — Akzentstreifen links</text>
+
+  <rect x="30" y="104" width="420" height="50" rx="10" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="39" y="117" width="5" height="24" rx="2.5" fill="#94a3b8"/>
+  <text x="56" y="134" font-size="15"><tspan font-weight="700" fill="#0f172a">Dienstag</tspan><tspan dx="8" fill="#64748b">26.5.</tspan></text>
+
+  <rect x="30" y="164" width="420" height="50" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
+  <rect x="39" y="177" width="5" height="24" rx="2.5" fill="#16a34a"/>
+  <text x="56" y="194" font-size="15"><tspan font-weight="700" fill="#0f172a">Dienstag</tspan><tspan dx="8" fill="#64748b">26.5.</tspan></text>
+  <rect x="382" y="176" width="56" height="24" rx="12" fill="#dcfce7"/>
+  <text x="410" y="192" font-size="11" font-weight="700" fill="#15803d" text-anchor="middle">heute</text>
+
+  <!-- ============ B — Kräftiger Kopf (gefüllt) ============ -->
+  <text x="30" y="248" font-size="15" font-weight="700" fill="#374151">B — Kräftiger Kopf (gefüllt)</text>
+
+  <rect x="30" y="260" width="420" height="50" rx="10" fill="#334155"/>
+  <text x="50" y="290" font-size="15"><tspan font-weight="700" fill="#ffffff">Dienstag</tspan><tspan dx="8" fill="#cbd5e1">26.5.</tspan></text>
+
+  <rect x="30" y="320" width="420" height="50" rx="10" fill="#16a34a"/>
+  <text x="50" y="350" font-size="15"><tspan font-weight="700" fill="#ffffff">Dienstag</tspan><tspan dx="8" fill="#dcfce7">26.5.</tspan></text>
+  <rect x="382" y="332" width="56" height="24" rx="12" fill="#ffffff" fill-opacity="0.22"/>
+  <text x="410" y="348" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">heute</text>
+
+  <!-- ============ C — Datums-Badge ============ -->
+  <text x="30" y="404" font-size="15" font-weight="700" fill="#374151">C — Datums-Badge</text>
+
+  <rect x="30" y="416" width="420" height="56" rx="10" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="50" y="450" font-size="16" font-weight="700" fill="#0f172a">Dienstag</text>
+  <rect x="356" y="431" width="78" height="26" rx="8" fill="#f1f5f9"/>
+  <text x="395" y="449" font-size="13" text-anchor="middle"><tspan font-weight="700" fill="#1e293b">26.</tspan><tspan fill="#64748b"> Mai</tspan></text>
+
+  <rect x="30" y="482" width="420" height="56" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
+  <text x="50" y="516" font-size="16"><tspan font-weight="700" fill="#0f172a">Dienstag</tspan><tspan dx="8" font-size="12" font-weight="700" fill="#16a34a">· heute</tspan></text>
+  <rect x="356" y="497" width="78" height="26" rx="8" fill="#16a34a"/>
+  <text x="395" y="515" font-size="13" text-anchor="middle"><tspan font-weight="700" fill="#ffffff">26.</tspan><tspan fill="#dcfce7"> Mai</tspan></text>
+
+  <!-- ============ D — Zweifarbig mit Unterstrich ============ -->
+  <text x="30" y="572" font-size="15" font-weight="700" fill="#374151">D — Zweifarbig mit Unterstrich</text>
+
+  <rect x="30" y="584" width="420" height="50" rx="10" fill="#f8fafc" stroke="#e5e7eb"/>
+  <text x="50" y="614" font-size="15"><tspan font-weight="700" fill="#0f172a">Dienstag</tspan><tspan dx="8" fill="#64748b">26.5.</tspan></text>
+  <rect x="50" y="624" width="64" height="3" rx="1.5" fill="#94a3b8"/>
+
+  <rect x="30" y="644" width="420" height="50" rx="10" fill="#f8fafc" stroke="#bbf7d0"/>
+  <text x="50" y="674" font-size="15"><tspan font-weight="700" fill="#15803d">Dienstag</tspan><tspan dx="8" fill="#64748b">26.5.</tspan></text>
+  <rect x="50" y="684" width="64" height="3" rx="1.5" fill="#16a34a"/>
+  <rect x="382" y="656" width="56" height="24" rx="12" fill="#dcfce7"/>
+  <text x="410" y="672" font-size="11" font-weight="700" fill="#15803d" text-anchor="middle">heute</text>
+</svg>
