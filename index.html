@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.36.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.37.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -314,6 +314,7 @@
             const [inbox, setInbox] = useState([]);
             const [showInbox, setShowInbox] = useState(false);
             const [myUnitsOnly, setMyUnitsOnly] = useState(false);
+            const [showAway, setShowAway] = useState(true);
             const [viewAsUser, setViewAsUser] = useState(false);
             const [planDesign, setPlanDesign] = useState('1'); // '1' Karten, '2' nach Platz gruppiert
             const [showRequestsModal, setShowRequestsModal] = useState(false);
@@ -378,7 +379,10 @@
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     // Auswärtsspiele sehen nur Admins und der Trainer des betroffenen Teams
-                    if (event.venue === 'away' && GAME_TYPES.includes(event.type) && !isAdmin && !myTeams.includes(event.team)) return false;
+                    if (event.venue === 'away' && GAME_TYPES.includes(event.type)) {
+                        if (!isAdmin && !myTeams.includes(event.team)) return false;
+                        if (!showAway) return false;
+                    }
                     return true;
                 }).sort(compareEvents);
             };
@@ -392,7 +396,10 @@
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
-                    if (event.venue === 'away' && GAME_TYPES.includes(event.type) && !isAdmin && !myTeams.includes(event.team)) return false;
+                    if (event.venue === 'away' && GAME_TYPES.includes(event.type)) {
+                        if (!isAdmin && !myTeams.includes(event.team)) return false;
+                        if (!showAway) return false;
+                    }
                     return true;
                 }).sort(compareEvents);
             };
@@ -1925,6 +1932,9 @@
                                 )}
                                 {FIREBASE_READY && isTrainerLike && (
                                     <button onClick={() => setMyUnitsOnly(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${myUnitsOnly ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="activity" /> <span>Meine Einheiten{myUnitsOnly ? ' •' : ''}</span></button>
+                                )}
+                                {FIREBASE_READY && (isAdmin || isTrainerLike) && (
+                                    <button onClick={() => setShowAway(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${showAway ? 'bg-slate-600 text-white hover:bg-slate-700' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="mapPin" /> <span>Auswärts {showAway ? 'an' : 'aus'}</span></button>
                                 )}
                                 {FIREBASE_READY && (isAdmin || isTrainerLike) && (
                                     <button onClick={() => setShowRequestsModal(true)} className="relative flex-1 sm:flex-none bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="repeat" /> <span>Anträge</span>{isAdmin && pendingRequests.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{pendingRequests.length}</span>}</button>
