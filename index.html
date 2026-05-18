@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.24.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.25.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -295,6 +295,7 @@
             const [inbox, setInbox] = useState([]);
             const [showInbox, setShowInbox] = useState(false);
             const [myUnitsOnly, setMyUnitsOnly] = useState(false);
+            const [viewAsUser, setViewAsUser] = useState(false);
             const [showRequestsModal, setShowRequestsModal] = useState(false);
             const [eventActionTarget, setEventActionTarget] = useState(null);
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
@@ -980,7 +981,9 @@
                 ? (allUsers.find(u => u.uid === authUser?.uid) || null)
                 : null;
             const userRole = !FIREBASE_READY ? 'admin' : (userProfile ? userProfile.role : null);
-            const isAdmin = userRole === 'admin';
+            const isRealAdmin = userRole === 'admin';
+            // Admins können testweise in die Benutzer-Ansicht wechseln
+            const isAdmin = isRealAdmin && !viewAsUser;
 
             // Darf der aktuelle Nutzer den vollen Bearbeiten-Modus nutzen? (nur Admins)
             const canEdit = isAdmin;
@@ -989,8 +992,8 @@
             const REQUEST_TYPE_LABELS = { friendly: 'Freundschaftsspiel', reschedule: 'Spielverlegung', training: 'Zusätzliches Training', tournament: 'Turnier / Leistungsvergleich', camp: 'Trainingslager' };
             const REQUEST_EVENT_TYPE = { training: 'training', camp: 'camp', tournament: 'tournament', friendly: 'friendly' };
 
-            // Trainer oder Co-Trainer (gleiche Rechte)
-            const isTrainerLike = userRole === 'trainer' || userRole === 'cotrainer';
+            // Trainer/Co-Trainer – oder ein Admin, der die Benutzer-Ansicht testet
+            const isTrainerLike = userRole === 'trainer' || userRole === 'cotrainer' || (isRealAdmin && viewAsUser);
             const myTeams = (userProfile && Array.isArray(userProfile.teams)) ? userProfile.teams : [];
             // Gehört dieser Termin (Training) zu einem meiner Teams?
             const ownsEvent = (event) => isTrainerLike && event && event.type === 'training' && myTeams.includes(event.team);
@@ -1661,6 +1664,9 @@
                             </div>
                         </div>
                         <div className="flex items-center gap-2 no-print">
+                            {FIREBASE_READY && isRealAdmin && (
+                                <button onClick={() => setViewAsUser(v => !v)} title="Zwischen Admin- und Benutzer-Ansicht wechseln" className={`px-3 py-2 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${viewAsUser ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-slate-700 text-white hover:bg-slate-800'}`}><Icon name={viewAsUser ? 'user' : 'unlock'} className="w-4 h-4" /> <span>{viewAsUser ? 'Benutzer-Ansicht' : 'Admin-Ansicht'}</span></button>
+                            )}
                             {FIREBASE_READY && authUser && (
                                 <button onClick={() => setShowInbox(true)} title="Benachrichtigungen" aria-label="Benachrichtigungen" className="relative bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="bell" className="w-5 h-5" />{unreadInbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{unreadInbox.length}</span>}</button>
                             )}
