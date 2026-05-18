@@ -3,6 +3,19 @@
 Offene Aufgaben und Feature-Wünsche für den Platzbelegungsplaner.
 Noch nicht umgesetzt – als Planung festgehalten.
 
+## Fehler / Bugs
+
+- [ ] **Spiele werden ungewollt als Serie angelegt**
+  - Beim Anlegen eines Pflicht- oder Freundschaftsspiels wird der Termin
+    teils als wöchentliche Serie erstellt.
+  - Vermutete Ursache: Die Option „Als wöchentliche Serie anlegen" wird
+    für alle Terminarten angezeigt, und der Haken (`newEvent.isSeries`)
+    wird beim Schließen des Dialogs ohne Speichern nicht zurückgesetzt –
+    er bleibt für den nächsten Termin gesetzt.
+  - Lösungsrichtung: Serien-Option für Spielarten (Pflicht-, Freund-
+    schafts-, Pokal-, Nachholspiel) ausblenden und/oder das Formular
+    beim Schließen zurücksetzen.
+
 ## Einrichtung / Betrieb
 
 - [ ] **Mailversand einrichten**
