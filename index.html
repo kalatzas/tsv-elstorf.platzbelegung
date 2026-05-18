@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.32.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.33.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -272,7 +272,7 @@
                 { value: 're', label: 'Rechts', short: 'Re' }
             ];
 
-            const eventTypes = {
+            const DEFAULT_EVENT_TYPES = {
                 training: { label: 'Training', color: 'bg-green-500', icon: 'activity', pill: 'bg-green-100 text-green-700' },
                 match: { label: 'Pflichtspiel', color: 'bg-blue-500', icon: 'flag', pill: 'bg-blue-100 text-blue-700' },
                 friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-500', icon: 'users', pill: 'bg-yellow-100 text-yellow-800' },
@@ -282,6 +282,17 @@
                 tournament: { label: 'Turnier', color: 'bg-orange-500', icon: 'trophy', pill: 'bg-orange-100 text-orange-800' },
                 blocked: { label: 'Platzsperre', color: 'bg-gray-600', icon: 'ban', pill: 'bg-gray-200 text-gray-700' }
             };
+            // Farbpalette für neu hinzugefügte Terminarten (automatisch vergeben)
+            const TYPE_COLOR_PALETTE = [
+                { color: 'bg-cyan-500', pill: 'bg-cyan-100 text-cyan-700' },
+                { color: 'bg-pink-500', pill: 'bg-pink-100 text-pink-700' },
+                { color: 'bg-indigo-500', pill: 'bg-indigo-100 text-indigo-700' },
+                { color: 'bg-lime-500', pill: 'bg-lime-100 text-lime-700' },
+                { color: 'bg-rose-500', pill: 'bg-rose-100 text-rose-700' },
+                { color: 'bg-sky-500', pill: 'bg-sky-100 text-sky-700' },
+                { color: 'bg-fuchsia-500', pill: 'bg-fuchsia-100 text-fuchsia-700' },
+                { color: 'bg-emerald-500', pill: 'bg-emerald-100 text-emerald-700' }
+            ];
 
             const emptyNewEvent = {
                 field: '', date: '', time: '', duration: 1.5, type: 'training',
@@ -315,6 +326,21 @@
             const [requestForm, setRequestForm] = useState(emptyRequestForm);
             const [requestReviewTarget, setRequestReviewTarget] = useState(null);
             const [reviewForm, setReviewForm] = useState({ field: '', cabin: [], position: '' });
+            const [customTypes, setCustomTypes] = useState([]);
+            const [typeLabels, setTypeLabels] = useState({});
+            const [newTypeName, setNewTypeName] = useState('');
+
+            // Effektive Terminarten: Standard + selbst angelegte, mit ggf. umbenannten Labels
+            const eventTypes = (() => {
+                const out = {};
+                Object.entries(DEFAULT_EVENT_TYPES).forEach(([k, v]) => {
+                    out[k] = { ...v, label: typeLabels[k] || v.label };
+                });
+                customTypes.forEach(t => {
+                    out[t.id] = { label: typeLabels[t.id] || t.label, color: t.color, pill: t.pill, icon: t.icon || 'calendar' };
+                });
+                return out;
+            })();
 
             // Termine sortieren: nach Platz, Art, Zeit, dann Jugend aufsteigend
             const eventTypeKeys = Object.keys(eventTypes);
@@ -822,6 +848,10 @@
                         setAppTitle(localStorage.getItem('football-title') || 'Platzbelegungsplaner');
                         setAppSubtitle(localStorage.getItem('football-subtitle') || 'Fußballverein Jugendabteilung');
                         setAppLogo(localStorage.getItem('football-logo') || '');
+                        const sCustomTypes = localStorage.getItem('football-customtypes');
+                        setCustomTypes(sCustomTypes ? JSON.parse(sCustomTypes) : []);
+                        const sTypeLabels = localStorage.getItem('football-typelabels');
+                        setTypeLabels(sTypeLabels ? JSON.parse(sTypeLabels) : {});
                     } catch (e) {
                         console.error('Fehler beim Laden der Daten:', e);
                         setEvents(EXAMPLE_EVENTS);
@@ -841,6 +871,8 @@
                         setAppTitle((data && data.title) || 'Platzbelegungsplaner');
                         setAppSubtitle((data && data.subtitle) || 'Fußballverein Jugendabteilung');
                         setAppLogo((data && data.logo) || '');
+                        setCustomTypes(data && Array.isArray(data.customTypes) ? data.customTypes : []);
+                        setTypeLabels((data && data.typeLabels) || {});
                         setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
                         setDataLoaded(true);
                     },
@@ -961,11 +993,13 @@
                         localStorage.setItem('football-title', appTitle);
                         localStorage.setItem('football-subtitle', appSubtitle);
                         localStorage.setItem('football-logo', appLogo);
+                        localStorage.setItem('football-customtypes', JSON.stringify(customTypes));
+                        localStorage.setItem('football-typelabels', JSON.stringify(typeLabels));
                     } catch (e) {
                         console.error('Fehler beim Speichern der Stammdaten:', e);
                     }
                 }
-            }, [cabins, positions, appTitle, appSubtitle, appLogo, dataLoaded]);
+            }, [cabins, positions, appTitle, appSubtitle, appLogo, customTypes, typeLabels, dataLoaded]);
 
             // Termine speichern: lokal sofort, in der Cloud für alle
             const commitEvents = (next) => {
@@ -1070,6 +1104,22 @@
                 setNewPositionName('');
             };
             const removePosition = (val) => commitStammdaten('positions', positions.filter(p => p.value !== val), setPositions);
+
+            const addType = () => {
+                const n = newTypeName.trim();
+                if (!n) return;
+                const pal = TYPE_COLOR_PALETTE[customTypes.length % TYPE_COLOR_PALETTE.length];
+                const next = [...customTypes, { id: 'type' + Date.now(), label: n, color: pal.color, pill: pal.pill, icon: 'calendar' }];
+                commitStammdaten('customTypes', next, setCustomTypes);
+                setNewTypeName('');
+            };
+            const removeType = (id) => {
+                if (events.some(e => e.type === id)) {
+                    addNotification('Diese Terminart wird noch von Terminen verwendet.', 'warning');
+                    return;
+                }
+                commitStammdaten('customTypes', customTypes.filter(t => t.id !== id), setCustomTypes);
+            };
 
             const addTeam = () => {
                 const n = newTeamName.trim();
@@ -2761,6 +2811,33 @@
                                         <div className="flex gap-2">
                                             <input type="text" value={newPositionName} onChange={(e) => setNewPositionName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addPosition(); }} placeholder="Neue Position" className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent" />
                                             <button onClick={addPosition} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t pt-4 space-y-2">
+                                        <h3 className="text-sm font-semibold text-gray-700">Terminarten</h3>
+                                        <p className="text-xs text-gray-500">Bestehende Arten umbenennen oder neue hinzufügen (neue Arten erhalten automatisch eine Farbe).</p>
+                                        <div className="space-y-1.5">
+                                            {eventTypeKeys.map(k => {
+                                                const isCustom = customTypes.some(t => t.id === k);
+                                                return (
+                                                    <div key={k} className="flex items-center gap-2 border rounded-md p-1.5">
+                                                        <span className={`${eventTypes[k].color} w-5 h-5 rounded shrink-0`}></span>
+                                                        <input
+                                                            type="text"
+                                                            value={eventTypes[k].label}
+                                                            onChange={(e) => setTypeLabels({ ...typeLabels, [k]: e.target.value })}
+                                                            onBlur={() => commitStammdaten('typeLabels', typeLabels, setTypeLabels)}
+                                                            className="flex-1 min-w-0 border rounded p-1.5 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                                                        />
+                                                        {isCustom && <button onClick={() => removeType(k)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded px-2 py-1 shrink-0">Entfernen</button>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input type="text" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addType(); }} placeholder="Neue Terminart" className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent" />
+                                            <button onClick={addType} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
                                         </div>
                                     </div>
                                 </div>
