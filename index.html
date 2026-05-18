@@ -24,6 +24,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
+    <!-- EmailJS: E-Mail-Benachrichtigungen -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
     <style>
         :root { --kb-inset: 0px; }
         /* Modal-Overlay: schiebt das Bottom-Sheet bei offener Tastatur nach oben */
@@ -70,8 +73,26 @@
         // weitere Benutzer (Trainer/Co-Trainer) verwalten.
         const BOOTSTRAP_ADMIN_EMAIL = "kosta@alatzas.de";
         // ============================================================
+        //  EMAILJS-KONFIGURATION (E-Mail-Benachrichtigungen)
+        //  Werte aus dem EmailJS-Dashboard eintragen (siehe README.md).
+        //  Solange hier "HIER_EINTRAGEN" steht, werden keine E-Mails
+        //  verschickt – die App funktioniert davon unabhängig weiter.
+        // ============================================================
+        const emailjsConfig = {
+            publicKey:  "HIER_EINTRAGEN",
+            serviceId:  "HIER_EINTRAGEN",
+            templateId: "HIER_EINTRAGEN"
+        };
+        // Basis-URL der App – wird in Willkommens-Mails verlinkt.
+        const APP_URL = "https://kalatzas.github.io/tsv-elstorf.platzbelegung/";
+        // ============================================================
 
         const FIREBASE_READY = firebaseConfig.apiKey && firebaseConfig.apiKey !== "HIER_EINTRAGEN";
+        const EMAILJS_READY = Object.values(emailjsConfig).every(v => v && v !== "HIER_EINTRAGEN");
+        if (EMAILJS_READY && typeof emailjs !== 'undefined') {
+            try { emailjs.init({ publicKey: emailjsConfig.publicKey }); }
+            catch (e) { console.error('EmailJS-Initialisierung fehlgeschlagen:', e); }
+        }
         let db = null, auth = null;
         if (FIREBASE_READY) {
             try {
@@ -139,7 +160,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.12.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.13.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -834,6 +855,14 @@
                     .finally(() => setLoggingIn(false));
             };
 
+            const handleForgotPassword = () => {
+                if (!FIREBASE_READY) return;
+                if (!loginEmail.trim()) { addNotification('Bitte zuerst die E-Mail-Adresse eingeben.', 'warning'); return; }
+                auth.sendPasswordResetEmail(loginEmail.trim())
+                    .then(() => addNotification('E-Mail zum Zurücksetzen wurde gesendet.', 'success'))
+                    .catch(() => addNotification('Senden fehlgeschlagen – E-Mail prüfen.', 'warning'));
+            };
+
             const handleLogout = () => {
                 if (FIREBASE_READY && auth) auth.signOut();
                 addNotification('Abgemeldet', 'info');
@@ -879,6 +908,12 @@
                     const res = await createUserAccount(f);
                     if (res.ok) {
                         addNotification('Benutzer angelegt', 'success');
+                        sendEmail(f.email.trim(), f.name.trim(), '[Platzbelegungsplaner] Dein Zugang',
+                            `Hallo ${f.name.trim()},\n\nfür dich wurde ein Zugang zum Platzbelegungsplaner des TSV Elstorf angelegt.\n\n`
+                            + `E-Mail zum Anmelden: ${f.email.trim()}\nRolle: ${ROLE_LABELS[f.role] || f.role}\n\n`
+                            + `Das Start-Passwort teilt dir der Administrator persönlich mit. `
+                            + `Du kannst es nach dem ersten Login jederzeit über „Passwort vergessen" zurücksetzen.\n\n`
+                            + `Zum Plan: ${APP_URL}`);
                         setUserForm({ uid: '', name: '', email: '', password: '', role: 'trainer', teams: [] });
                     } else {
                         addNotification(`Anlegen fehlgeschlagen: ${res.error}`, 'warning');
@@ -914,13 +949,26 @@
             const adminUids = () => allUsers.filter(u => u.role === 'admin' && u.uid !== authUser?.uid).map(u => u.uid);
             const teamTrainerUids = (team) => allUsers.filter(u => (u.teams || []).includes(team) && u.uid !== authUser?.uid).map(u => u.uid);
 
-            // Benachrichtigungen für eine Liste von Empfängern anlegen
+            // E-Mail über EmailJS verschicken (still, wenn nicht konfiguriert)
+            const sendEmail = (toEmail, toName, subject, message) => {
+                if (!EMAILJS_READY || typeof emailjs === 'undefined' || !toEmail) return;
+                emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, {
+                    to_email: toEmail, to_name: toName || '', subject, message
+                }).catch((e) => console.error('E-Mail-Versand fehlgeschlagen:', e));
+            };
+
+            // Benachrichtigungen für eine Liste von Empfängern anlegen (App + E-Mail)
             const pushNotification = (recipientUids, payload) => {
                 if (!FIREBASE_READY) return;
                 const uids = [...new Set(recipientUids)].filter(Boolean);
                 uids.forEach((uid) => {
                     db.collection('notifications').add({ recipientUid: uid, read: false, createdAt: Date.now(), ...payload })
                         .catch((e) => console.error('Benachrichtigung fehlgeschlagen:', e));
+                    const u = allUsers.find(x => x.uid === uid);
+                    if (u && u.email) {
+                        sendEmail(u.email, u.name, `[Platzbelegungsplaner] ${payload.title}`,
+                            `${payload.body}\n\nZum Plan: ${APP_URL}`);
+                    }
                 });
             };
 
@@ -2726,6 +2774,7 @@
                                     <button onClick={handleLogin} disabled={loggingIn} className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2 px-4 rounded-md transition-colors">
                                         {loggingIn ? 'Anmelden…' : 'Anmelden'}
                                     </button>
+                                    <button onClick={handleForgotPassword} className="w-full text-sm text-blue-700 hover:underline">Passwort vergessen?</button>
                                 </div>
                             </div>
                         </div>

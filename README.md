@@ -16,7 +16,7 @@ Trainings- und Spielzeiten, nutzbar auf Handy und Desktop.
 - **Antrags-Workflow**: Trainer beantragen Training, Trainingslager, Turnier,
   Freundschaftsspiel oder Spielverlegung — der Admin genehmigt oder lehnt ab
 - **Benachrichtigungen** mit Glocken-Postfach (neue Anträge, Entscheidungen,
-  abgesagte Einheiten) — optional auch als Browser-Hinweis
+  abgesagte Einheiten) — optional als Browser-Hinweis und als E-Mail (EmailJS)
 - **Installierbar als App (PWA)** auf Handy-Homescreen und Desktop
 
 ## Bedienung
@@ -152,6 +152,59 @@ erlaubt einmalig dem Bootstrap-Admin, sein Profil beim ersten Login
 anzulegen. Benachrichtigungen kann jeder angemeldete Nutzer für andere
 erstellen; lesen, als gelesen markieren und löschen kann sie nur der
 jeweilige Empfänger.
+
+## E-Mail-Benachrichtigungen einrichten (optional, EmailJS)
+
+Zusätzlich zum Glocken-Postfach kann die App E-Mails verschicken
+(neuer Antrag, Entscheidung, abgesagte/gelöschte Einheit, neues Konto).
+Der Versand läuft über **EmailJS** mit einem **Outlook/Microsoft-Konto**.
+Solange unten `HIER_EINTRAGEN` steht, werden einfach keine Mails
+verschickt – die App funktioniert unverändert weiter.
+
+### 1. EmailJS-Konto und Outlook verbinden
+
+1. Auf [emailjs.com](https://www.emailjs.com) kostenlos registrieren.
+2. **„Email Services" → „Add New Service" → „Outlook"** wählen, mit dem
+   Microsoft-Konto anmelden und die Freigabe erteilen. Mails werden
+   später von der Adresse dieses Kontos versendet.
+3. Die **Service-ID** notieren.
+
+### 2. Vorlage (Template) anlegen
+
+**„Email Templates" → „Create New Template"** und folgende Felder setzen:
+
+- **To Email:** `{{to_email}}`
+- **Subject:** `{{subject}}`
+- **Content:** `{{message}}` (als reinen Text belassen; bei einer
+  HTML-Vorlage `{{message}}` mit doppelten Klammern verwenden – so wird
+  der Inhalt automatisch escaped)
+
+Die **Template-ID** notieren.
+
+### 3. Public Key und Missbrauchsschutz
+
+1. Unter **„Account"** den **Public Key** kopieren.
+2. Unter **„Account" → „Security"** bei **„Allowed Origins"** die
+   Adresse der App eintragen (z. B. die GitHub-Pages-URL). **Wichtig:**
+   Das verhindert, dass Fremde über das Konto Mails versenden.
+
+### 4. Werte in `index.html` eintragen
+
+Im Block `emailjsConfig` die drei Werte eintragen und `APP_URL` auf die
+echte Adresse der App setzen:
+
+```js
+const emailjsConfig = {
+    publicKey:  "dein_public_key",
+    serviceId:  "dein_service_id",
+    templateId: "dein_template_id"
+};
+const APP_URL = "https://.../tsv-elstorf.platzbelegung/";
+```
+
+Hinweis: Public Key, Service- und Template-ID stehen sichtbar in der
+`index.html`. Die Beschränkung der „Allowed Origins" (Schritt 3) ist
+deshalb der wichtigste Schutz gegen Missbrauch.
 
 ## Als App installieren (PWA)
 
