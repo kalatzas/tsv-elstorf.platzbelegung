@@ -48,3 +48,9 @@ Noch nicht umgesetzt – als Planung festgehalten.
   - Personen-Icon (An-/Abmelden) und Glocken-Icon **ganz oben rechts**
     platzieren – nicht in der Button-Zeile mit Filter, „Meine
     Einheiten" usw.
+
+## Administration
+
+- [ ] **Teamverwaltung**
+  - Ich möchte in der Admin-Rikke eine Verwaltung der Teams haben. Wir haben für die Plätze auch Hockey und Drohnen-Racing, die unsere Plätze auch nutzen, daher möchte ich flexibel sein bei der Teamverwaltung.
+  - Als zusätzlicher Platz muss die Halle auswählbar sein.
