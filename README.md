@@ -5,7 +5,8 @@ Trainings- und Spielzeiten, nutzbar auf Handy und Desktop.
 
 ## Funktionen
 
-- 5 Plätze, Zeitslots, Teams (U8–U19) mit anpassbaren Teamfarben, Kabinen
+- Plätze inkl. Halle, Zeitslots, Kabinen; Teams frei verwaltbar (Standard
+  U8–U19) mit anpassbaren Teamfarben
 - 3 Ansichten: Tabelle, Kalender, Plätze
 - Termintypen (Training, Pflichtspiel, Pokal …) und Serientermine
 - CSV-/JSON-Export, JSON-Import, Drucken
