@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.27.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.28.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -283,10 +283,11 @@
                 blocked: { label: 'Platzsperre', color: 'bg-gray-600', icon: 'ban', pill: 'bg-gray-200 text-gray-700' }
             };
 
-            const [newEvent, setNewEvent] = useState({
-                field: '', day: '', time: '', duration: 1.5, type: 'training',
+            const emptyNewEvent = {
+                field: '', date: '', time: '', duration: 1.5, type: 'training',
                 team: '', title: '', cabin: [], trainer: '', position: '', isSeries: false, endDate: ''
-            });
+            };
+            const [newEvent, setNewEvent] = useState(emptyNewEvent);
 
             const [newClosure, setNewClosure] = useState({ field: '', fromDate: '', toDate: '', reason: '' });
             const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS);
@@ -589,7 +590,7 @@
                     if (r) openReview(r);
                     return;
                 }
-                if (isAdmin) { setEditingEvent({...event}); return; }
+                if (isAdmin) { setEditingEvent({ ...event, date: event.date || event.eventDate || '' }); return; }
                 if (ownsEvent(event)) { setEventActionTarget(event); }
             };
 
@@ -1005,6 +1006,11 @@
             const cabinText = (cabin) => Array.isArray(cabin) ? cabin.join(', ') : (cabin || '');
             // Trainer-Anzeige: nur der Vorname (erstes Wort des Namens)
             const trainerFirstName = (n) => (n || '').trim().split(/\s+/)[0] || '';
+            // Trainer, der einem Team zugewiesen ist (erster Treffer)
+            const trainerForTeam = (team) => {
+                const u = allUsers.find(x => Array.isArray(x.teams) && x.teams.includes(team));
+                return u ? u.name : '';
+            };
 
             // Profil des aktuell angemeldeten Nutzers (aus der users-Sammlung)
             const userProfile = FIREBASE_READY
@@ -1043,7 +1049,8 @@
             // Termin-Dialog öffnen; Team wird aus dem Profil vorbefüllt
             const openAddModal = (extra = {}) => {
                 if (!requireEditor()) return;
-                setNewEvent(ne => ({ ...ne, team: ne.team || (myTeams.length > 0 ? myTeams[0] : ''), ...extra }));
+                const team = myTeams.length > 0 ? myTeams[0] : '';
+                setNewEvent({ ...emptyNewEvent, team, trainer: trainerForTeam(team) || '', ...extra });
                 setShowAddModal(true);
             };
 
@@ -1393,18 +1400,22 @@
 
             const validateEvent = (event) => {
                 if (event.type === 'blocked') {
-                    // Für Platzsperren nur Platz, Tag und Zeit erforderlich
-                    if (!event.field || !event.day || !event.time) {
+                    if (!event.field || !event.date || !event.time) {
                         return 'Bitte Platz, Tag und Zeit auswählen!';
                     }
                 } else {
-                    // Pflichtfelder: Platz, Tag, Zeit, Team (Gegner ist optional)
-                    if (!event.field || !event.day || !event.time || !event.team) {
+                    if (!event.field || !event.date || !event.time || !event.team) {
                         return 'Bitte alle Pflichtfelder ausfüllen!';
                     }
                 }
                 return null;
             };
+
+            // Termin-Objekt aus dem Datum mit Wochentag/Wochen-Versatz anreichern
+            const withDateFields = (ev, iso) => ({
+                ...ev, date: iso, day: dateToWeekday(iso),
+                weekOffset: dateToWeekOffset(iso), eventDate: iso
+            });
 
             const addEvent = () => {
                 if (!requireEditor()) return;
@@ -1413,7 +1424,7 @@
                     addNotification(error, 'warning');
                     return;
                 }
-                
+
                 // Serien nur für Trainingseinheiten – Spiele sind Einzeltermine
                 const isSeries = newEvent.type === 'training' && !!newEvent.isSeries;
 
@@ -1427,23 +1438,22 @@
                     }
                 }
 
-                // Serientermine im Voraus erzeugen (wöchentlich bis zum Enddatum)
+                // Serientermine im Voraus erzeugen (wöchentlich ab Datum bis Enddatum)
                 let seriesEvents = null;
                 if (isSeries) {
                     if (!newEvent.endDate) {
                         addNotification('Bitte ein Enddatum für die Serie wählen!', 'warning');
                         return;
                     }
-                    const baseDate = getWeekStart(currentWeek);
-                    const dayIndex = weekdays.indexOf(eventToAdd.day);
-                    const end = new Date(newEvent.endDate + 'T23:59:59');
+                    const start = new Date(newEvent.date + 'T00:00:00');
                     const seriesId = 'S' + Date.now();
                     seriesEvents = [];
                     for (let week = 0; week < 60; week++) {
-                        const eventDate = new Date(baseDate);
-                        eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
-                        if (eventDate > end) break;
-                        seriesEvents.push({ ...eventToAdd, id: Date.now() + week, seriesId, isSeriesEvent: true, weekOffset: week, eventDate: eventDate.toISOString() });
+                        const d = new Date(start);
+                        d.setDate(start.getDate() + week * 7);
+                        const iso = toISODate(d);
+                        if (iso > newEvent.endDate) break;
+                        seriesEvents.push({ ...withDateFields(eventToAdd, iso), id: Date.now() + week, seriesId, isSeriesEvent: true });
                     }
                     if (seriesEvents.length === 0) {
                         addNotification('Im gewählten Zeitraum liegt kein Termin – bitte Enddatum prüfen.', 'warning');
@@ -1451,23 +1461,25 @@
                     }
                 }
 
+                const singleEvent = { ...withDateFields(eventToAdd, newEvent.date), id: Date.now() };
+
                 const commit = () => {
                     if (isSeries) {
                         commitEvents([...events, ...seriesEvents]);
                         addNotification(`${seriesEvents.length} Serientermine erstellt`, 'success');
                     } else {
-                        commitEvents([...events, { ...eventToAdd, id: Date.now() }]);
+                        commitEvents([...events, singleEvent]);
                         addNotification('Termin hinzugefügt', 'success');
                     }
-                    setNewEvent({ field: '', day: '', time: '', duration: 1.5, type: 'training', team: '', title: '', cabin: [], trainer: '', position: '', isSeries: false, endDate: '' });
+                    setNewEvent(emptyNewEvent);
                     setShowAddModal(false);
                 };
 
                 if (!isSeries) {
-                    const eventConflicts = findConflicts(eventToAdd);
-                    const closureConflicts = closuresForEvent(eventToAdd);
+                    const eventConflicts = findConflicts(singleEvent);
+                    const closureConflicts = closuresForEvent(singleEvent);
                     if (eventConflicts.length > 0 || closureConflicts.length > 0) {
-                        askConfirm(conflictMessage(eventConflicts, closureConflicts, eventToAdd), commit);
+                        askConfirm(conflictMessage(eventConflicts, closureConflicts, singleEvent), commit);
                         return;
                     }
                 }
@@ -1481,16 +1493,17 @@
                     addNotification(error, 'warning');
                     return;
                 }
+                const updated = withDateFields(editingEvent, editingEvent.date);
                 const commit = () => {
-                    commitEvents(events.map(e => e.id === editingEvent.id ? editingEvent : e));
+                    commitEvents(events.map(e => e.id === editingEvent.id ? updated : e));
                     setEditingEvent(null);
                     addNotification('Termin aktualisiert', 'success');
                 };
 
-                const eventConflicts = findConflicts(editingEvent);
-                const closureConflicts = closuresForEvent(editingEvent);
+                const eventConflicts = findConflicts(updated);
+                const closureConflicts = closuresForEvent(updated);
                 if (eventConflicts.length > 0 || closureConflicts.length > 0) {
-                    askConfirm(conflictMessage(eventConflicts, closureConflicts, editingEvent), commit);
+                    askConfirm(conflictMessage(eventConflicts, closureConflicts, updated), commit);
                 } else {
                     commit();
                 }
@@ -1878,7 +1891,7 @@
                                                 {canEdit && !getFilteredEvents().some(e => e.day === day && e.time === time) && (
                                                     <div
                                                         className="no-print absolute inset-0 hover:bg-green-50 cursor-pointer opacity-30 hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                        onClick={() => openAddModal({ day, time })}
+                                                        onClick={() => openAddModal({ time, date: (getWeekDates(currentWeek).find(d => d.day === day) || {}).iso || '' })}
                                                     >
                                                         <span className="text-gray-400 text-lg">+</span>
                                                     </div>
@@ -2019,7 +2032,7 @@
                                             )}
                                             {renderDayEvents(dayEvents)}
                                             {canEdit && (
-                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ day: dayName })}>
+                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ date: toISODate(date) })}>
                                                     + Hinzufügen
                                                 </div>
                                             )}
@@ -2045,7 +2058,7 @@
                                             {renderDayClosures(iso)}
                                             {renderDayEvents(getFilteredEvents().filter(e => e.day === day))}
                                             {canEdit && (
-                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ day })}>
+                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ date: iso })}>
                                                     + Hinzufügen
                                                 </div>
                                             )}
@@ -2193,7 +2206,7 @@
                                                                 {canEdit && !occupyingEvent && !isOccupied && (
                                                                     <div
                                                                         className="no-print absolute inset-0 flex items-center justify-center opacity-30 hover:opacity-100 transition-opacity cursor-pointer"
-                                                                        onClick={() => openAddModal({ day, time, field: field.id })}
+                                                                        onClick={() => openAddModal({ time, field: field.id, date: (getWeekDates(currentWeek).find(d => d.day === day) || {}).iso || '' })}
                                                                     >
                                                                         <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-sm">
                                                                             +
@@ -2294,44 +2307,36 @@
                                 <div className="flex-1 overflow-y-auto p-6">
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Platz *</label>
-                                            <select value={newEvent.field} onChange={(e) => setNewEvent({...newEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
                                             <label className="block text-sm font-medium mb-1">Typ *</label>
                                             <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value, isSeries: e.target.value === 'training' ? newEvent.isSeries : false})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                {['training', 'match', 'friendly', 'cup', 'makeup', 'camp', 'tournament'].map(k => <option key={k} value={k}>{eventTypes[k].label}</option>)}
+                                                {eventTypeKeys.filter(k => k !== 'blocked').map(k => <option key={k} value={k}>{eventTypes[k].label}</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Tag *</label>
-                                            <select value={newEvent.day} onChange={(e) => setNewEvent({...newEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                            </select>
+                                            <DateField value={newEvent.date} onChange={(iso) => setNewEvent({...newEvent, date: iso})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Zeit *</label>
-                                            <select value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Dauer (Stunden)</label>
-                                            <input type="number" step="0.5" min="0.5" max="3" value={newEvent.duration} onChange={(e) => setNewEvent({...newEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Zeit *</label>
+                                                <select value={newEvent.time} onChange={(e) => setNewEvent({...newEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                    <option value="">Wählen</option>
+                                                    {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Dauer (Std.)</label>
+                                                <input type="number" step="0.5" min="0.5" max="6" value={newEvent.duration} onChange={(e) => setNewEvent({...newEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Team *</label>
-                                            <select value={newEvent.team} onChange={(e) => setNewEvent({...newEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                            <select value={newEvent.team} onChange={(e) => { const v = e.target.value; setNewEvent({...newEvent, team: v, trainer: trainerForTeam(v) || newEvent.trainer}); }} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
                                                 <option value="">Wählen</option>
                                                 {teams.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
-                                        {(newEvent.type === 'match' || newEvent.type === 'friendly' || newEvent.type === 'cup') && (
+                                        {GAME_TYPES.includes(newEvent.type) && (
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">Gegner</label>
                                                 <input
@@ -2349,6 +2354,23 @@
                                                 <option value="">Wählen</option>
                                                 {newEvent.trainer && !trainerOptions.some(u => u.name === newEvent.trainer) && <option value={newEvent.trainer}>{newEvent.trainer}</option>}
                                                 {trainerOptions.map(u => <option key={u.uid} value={u.name}>{u.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Platz *</label>
+                                            <select value={newEvent.field} onChange={(e) => setNewEvent({...newEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
+                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Position</label>
+                                            <select
+                                                value={newEvent.position}
+                                                onChange={(e) => setNewEvent({...newEvent, position: e.target.value})}
+                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                            >
+                                                {positions.map(p => <option key={p.value} value={p.value}>{p.value ? p.label : 'Ganzer Platz'}</option>)}
                                             </select>
                                         </div>
                                         <div>
@@ -2370,16 +2392,6 @@
                                                     );
                                                 })}
                                             </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Position</label>
-                                            <select
-                                                value={newEvent.position}
-                                                onChange={(e) => setNewEvent({...newEvent, position: e.target.value})}
-                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                            >
-                                                {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                            </select>
                                         </div>
                                         {newEvent.type === 'training' && (
                                         <div className="border-t pt-4">
@@ -2946,40 +2958,34 @@
                                 <div className="flex-1 overflow-y-auto p-6">
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Platz</label>
-                                            <select value={editingEvent.field} onChange={(e) => setEditingEvent({...editingEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Tag</label>
-                                            <select value={editingEvent.day} onChange={(e) => setEditingEvent({...editingEvent, day: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Zeit</label>
-                                            <select value={editingEvent.time} onChange={(e) => setEditingEvent({...editingEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                                {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Dauer</label>
-                                            <input type="number" step="0.5" min="0.5" max="3" value={editingEvent.duration} onChange={(e) => setEditingEvent({...editingEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-                                        </div>
-                                        <div>
                                             <label className="block text-sm font-medium mb-1">Typ</label>
                                             <select value={editingEvent.type} onChange={(e) => setEditingEvent({...editingEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                                 {Object.entries(eventTypes).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
                                             </select>
                                         </div>
                                         <div>
+                                            <label className="block text-sm font-medium mb-1">Tag</label>
+                                            <DateField value={editingEvent.date || ''} onChange={(iso) => setEditingEvent({...editingEvent, date: iso})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Zeit</label>
+                                                <select value={editingEvent.time} onChange={(e) => setEditingEvent({...editingEvent, time: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                    {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Dauer (Std.)</label>
+                                                <input type="number" step="0.5" min="0.5" max="6" value={editingEvent.duration} onChange={(e) => setEditingEvent({...editingEvent, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                            </div>
+                                        </div>
+                                        <div>
                                             <label className="block text-sm font-medium mb-1">Team</label>
-                                            <select value={editingEvent.team} onChange={(e) => setEditingEvent({...editingEvent, team: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <select value={editingEvent.team} onChange={(e) => { const v = e.target.value; setEditingEvent({...editingEvent, team: v, trainer: trainerForTeam(v) || editingEvent.trainer}); }} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                                 {teams.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
-                                        {(editingEvent.type === 'match' || editingEvent.type === 'friendly' || editingEvent.type === 'cup') && (
+                                        {GAME_TYPES.includes(editingEvent.type) && (
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">Gegner</label>
                                                 <input type="text" value={editingEvent.title || ''} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="z.B. FC Hamburg" />
@@ -2991,6 +2997,18 @@
                                                 <option value="">Wählen</option>
                                                 {editingEvent.trainer && !trainerOptions.some(u => u.name === editingEvent.trainer) && <option value={editingEvent.trainer}>{editingEvent.trainer}</option>}
                                                 {trainerOptions.map(u => <option key={u.uid} value={u.name}>{u.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Platz</label>
+                                            <select value={editingEvent.field} onChange={(e) => setEditingEvent({...editingEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Position</label>
+                                            <select value={editingEvent.position || ''} onChange={(e) => setEditingEvent({...editingEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                {positions.map(p => <option key={p.value} value={p.value}>{p.value ? p.label : 'Ganzer Platz'}</option>)}
                                             </select>
                                         </div>
                                         <div>
@@ -3012,12 +3030,6 @@
                                                     );
                                                 })}
                                             </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Position</label>
-                                            <select value={editingEvent.position || ''} onChange={(e) => setEditingEvent({...editingEvent, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                                {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                            </select>
                                         </div>
                                         <label className="flex items-center gap-2 text-sm border rounded-md p-2 cursor-pointer">
                                             <input type="checkbox" checked={!!editingEvent.cancelled} onChange={(e) => setEditingEvent({...editingEvent, cancelled: e.target.checked})} className="w-4 h-4 accent-red-600" />
