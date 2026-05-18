@@ -24,8 +24,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
-    <!-- EmailJS: E-Mail-Benachrichtigungen -->
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
     <style>
         :root { --kb-inset: 0px; }
@@ -73,26 +71,15 @@
         // weitere Benutzer (Trainer/Co-Trainer) verwalten.
         const BOOTSTRAP_ADMIN_EMAIL = "kosta@alatzas.de";
         // ============================================================
-        //  EMAILJS-KONFIGURATION (E-Mail-Benachrichtigungen)
-        //  Werte aus dem EmailJS-Dashboard eintragen (siehe README.md).
-        //  Solange hier "HIER_EINTRAGEN" steht, werden keine E-Mails
-        //  verschickt – die App funktioniert davon unabhängig weiter.
-        // ============================================================
-        const emailjsConfig = {
-            publicKey:  "HIER_EINTRAGEN",
-            serviceId:  "HIER_EINTRAGEN",
-            templateId: "HIER_EINTRAGEN"
-        };
-        // Basis-URL der App – wird in Willkommens-Mails verlinkt.
-        const APP_URL = "https://kalatzas.github.io/tsv-elstorf.platzbelegung/";
+        //  E-MAIL-VERSAND
+        //  E-Mails werden NICHT aus der App heraus verschickt, sondern
+        //  serverseitig: Eine Cloud Function reagiert auf neue Einträge
+        //  in der "notifications"-Sammlung und uebergibt sie der
+        //  Firebase-Erweiterung "Trigger Email" (siehe README.md).
+        //  Die App muss dafuer nichts weiter tun.
         // ============================================================
 
         const FIREBASE_READY = firebaseConfig.apiKey && firebaseConfig.apiKey !== "HIER_EINTRAGEN";
-        const EMAILJS_READY = Object.values(emailjsConfig).every(v => v && v !== "HIER_EINTRAGEN");
-        if (EMAILJS_READY && typeof emailjs !== 'undefined') {
-            try { emailjs.init({ publicKey: emailjsConfig.publicKey }); }
-            catch (e) { console.error('EmailJS-Initialisierung fehlgeschlagen:', e); }
-        }
         let db = null, auth = null;
         if (FIREBASE_READY) {
             try {
@@ -160,7 +147,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.15.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.16.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -907,8 +894,9 @@
                     await db.collection('users').doc(cred.user.uid).set({
                         name: name.trim(), email: email.trim(), role, teams, createdAt: Date.now()
                     });
+                    const uid = cred.user.uid;
                     await secondary.auth().signOut();
-                    return { ok: true };
+                    return { ok: true, uid };
                 } catch (e) {
                     return { ok: false, error: e.message };
                 }
@@ -937,12 +925,17 @@
                     const res = await createUserAccount(f);
                     if (res.ok) {
                         addNotification('Benutzer angelegt', 'success');
-                        sendEmail(f.email.trim(), f.name.trim(), '[Platzbelegungsplaner] Dein Zugang',
-                            `Hallo ${f.name.trim()},\n\nfür dich wurde ein Zugang zum Platzbelegungsplaner des TSV Elstorf angelegt.\n\n`
-                            + `E-Mail zum Anmelden: ${f.email.trim()}\nRolle: ${ROLE_LABELS[f.role] || f.role}\n\n`
-                            + `Das Start-Passwort teilt dir der Administrator persönlich mit. `
-                            + `Du kannst es nach dem ersten Login jederzeit über „Passwort vergessen" zurücksetzen.\n\n`
-                            + `Zum Plan: ${APP_URL}`);
+                        // Willkommens-Benachrichtigung (wird per Cloud Function auch als E-Mail versendet)
+                        if (res.uid) {
+                            db.collection('notifications').add({
+                                recipientUid: res.uid, read: false, createdAt: Date.now(),
+                                type: 'welcome', title: 'Willkommen beim Platzbelegungsplaner',
+                                body: `Hallo ${f.name.trim()},\n\nfür dich wurde ein Zugang zum Platzbelegungsplaner des TSV Elstorf angelegt.\n\n`
+                                    + `E-Mail zum Anmelden: ${f.email.trim()}\nRolle: ${ROLE_LABELS[f.role] || f.role}\n\n`
+                                    + `Das Start-Passwort teilt dir der Administrator persönlich mit. `
+                                    + `Du kannst es nach dem ersten Login jederzeit über „Passwort vergessen" zurücksetzen.`
+                            }).catch((e) => console.error('Willkommens-Benachrichtigung fehlgeschlagen:', e));
+                        }
                         setUserForm({ uid: '', name: '', email: '', password: '', role: 'trainer', teams: [] });
                     } else {
                         addNotification(`Anlegen fehlgeschlagen: ${res.error}`, 'warning');
@@ -978,26 +971,15 @@
             const adminUids = () => allUsers.filter(u => u.role === 'admin' && u.uid !== authUser?.uid).map(u => u.uid);
             const teamTrainerUids = (team) => allUsers.filter(u => (u.teams || []).includes(team) && u.uid !== authUser?.uid).map(u => u.uid);
 
-            // E-Mail über EmailJS verschicken (still, wenn nicht konfiguriert)
-            const sendEmail = (toEmail, toName, subject, message) => {
-                if (!EMAILJS_READY || typeof emailjs === 'undefined' || !toEmail) return;
-                emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, {
-                    to_email: toEmail, to_name: toName || '', subject, message
-                }).catch((e) => console.error('E-Mail-Versand fehlgeschlagen:', e));
-            };
-
-            // Benachrichtigungen für eine Liste von Empfängern anlegen (App + E-Mail)
+            // Benachrichtigungen anlegen. Der E-Mail-Versand passiert
+            // serverseitig: Eine Cloud Function reagiert auf neue
+            // notifications-Dokumente (siehe functions/index.js).
             const pushNotification = (recipientUids, payload) => {
                 if (!FIREBASE_READY) return;
                 const uids = [...new Set(recipientUids)].filter(Boolean);
                 uids.forEach((uid) => {
                     db.collection('notifications').add({ recipientUid: uid, read: false, createdAt: Date.now(), ...payload })
                         .catch((e) => console.error('Benachrichtigung fehlgeschlagen:', e));
-                    const u = allUsers.find(x => x.uid === uid);
-                    if (u && u.email) {
-                        sendEmail(u.email, u.name, `[Platzbelegungsplaner] ${payload.title}`,
-                            `${payload.body}\n\nZum Plan: ${APP_URL}`);
-                    }
                 });
             };
 

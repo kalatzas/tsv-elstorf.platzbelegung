@@ -16,7 +16,7 @@ Trainings- und Spielzeiten, nutzbar auf Handy und Desktop.
 - **Antrags-Workflow**: Trainer beantragen Training, Trainingslager, Turnier,
   Freundschaftsspiel oder Spielverlegung — der Admin genehmigt oder lehnt ab
 - **Benachrichtigungen** mit Glocken-Postfach (neue Anträge, Entscheidungen,
-  abgesagte Einheiten) — optional als Browser-Hinweis und als E-Mail (EmailJS)
+  abgesagte Einheiten) — optional als Browser-Hinweis und als E-Mail
 - **Installierbar als App (PWA)** auf Handy-Homescreen und Desktop
 
 ## Bedienung
@@ -138,6 +138,11 @@ service cloud.firestore {
       allow update, delete: if signedIn()
         && resource.data.recipientUid == request.auth.uid;
     }
+    match /mail/{id} {
+      // Nur die Cloud Function / die Trigger-Email-Erweiterung
+      // (Admin-SDK) schreiben hier – Clients haben keinen Zugriff.
+      allow read, write: if false;
+    }
   }
 }
 ```
@@ -153,58 +158,69 @@ anzulegen. Benachrichtigungen kann jeder angemeldete Nutzer für andere
 erstellen; lesen, als gelesen markieren und löschen kann sie nur der
 jeweilige Empfänger.
 
-## E-Mail-Benachrichtigungen einrichten (optional, EmailJS)
+## E-Mail-Benachrichtigungen einrichten (Firebase Trigger Email)
 
 Zusätzlich zum Glocken-Postfach kann die App E-Mails verschicken
 (neuer Antrag, Entscheidung, abgesagte/gelöschte Einheit, neues Konto).
-Der Versand läuft über **EmailJS** mit einem **Outlook/Microsoft-Konto**.
-Solange unten `HIER_EINTRAGEN` steht, werden einfach keine Mails
-verschickt – die App funktioniert unverändert weiter.
 
-### 1. EmailJS-Konto und Outlook verbinden
+Der Versand läuft **serverseitig** und ist so aufgebaut:
 
-1. Auf [emailjs.com](https://www.emailjs.com) kostenlos registrieren.
-2. **„Email Services" → „Add New Service" → „Outlook"** wählen, mit dem
-   Microsoft-Konto anmelden und die Freigabe erteilen. Mails werden
-   später von der Adresse dieses Kontos versendet.
-3. Die **Service-ID** notieren.
+1. Die App legt bei einem Ereignis ein Dokument in der Sammlung
+   `notifications` an (macht sie ohnehin für das Glocken-Postfach).
+2. Eine **Cloud Function** (`functions/index.js`) reagiert darauf,
+   ermittelt die E-Mail-Adresse aus dem `users`-Profil und schreibt ein
+   Dokument in die Sammlung `mail`.
+3. Die Firebase-Erweiterung **„Trigger Email"** verschickt dieses
+   Dokument per SMTP über ein **Microsoft-Postfach**.
 
-### 2. Vorlage (Template) anlegen
+Die SMTP-Zugangsdaten liegen damit serverseitig, und die App-Clients
+können weder Empfänger noch Inhalt der Mails frei bestimmen.
 
-**„Email Templates" → „Create New Template"** und folgende Felder setzen:
+**Voraussetzung:** Das Firebase-Projekt muss im **Blaze-Tarif** sein
+(Erweiterungen und Functions laufen über Cloud Functions). Bei diesem
+Mail-Volumen entstehen praktisch keine Kosten – ein Budget-Alarm in der
+Google Cloud Console wird trotzdem empfohlen.
 
-- **To Email:** `{{to_email}}`
-- **Subject:** `{{subject}}`
-- **Content:** `{{message}}` (als reinen Text belassen; bei einer
-  HTML-Vorlage `{{message}}` mit doppelten Klammern verwenden – so wird
-  der Inhalt automatisch escaped)
+### 1. Erweiterung „Trigger Email" installieren
 
-Die **Template-ID** notieren.
+1. Firebase-Konsole → **„Extensions"** → nach **„Trigger Email from
+   Firestore"** suchen → **Installieren**.
+2. Im Einrichtungsassistenten:
+   - **SMTP-Verbindung:** Server `smtp.office365.com` (Microsoft 365)
+     bzw. `smtp-mail.outlook.com` (privates Outlook.com), **Port 587**.
+     Benutzername und Passwort des Microsoft-Postfachs angeben.
+   - **Email documents collection:** `mail` (Standard so lassen).
+   - **Default FROM address:** die Microsoft-Adresse, von der gesendet
+     werden soll.
+3. Installation abschließen.
 
-### 3. Public Key und Missbrauchsschutz
+Hinweis Microsoft: Für Microsoft 365 muss für das Postfach **„SMTP
+AUTH" aktiviert** sein; für privates Outlook.com ein **App-Passwort**
+(2-Faktor-Anmeldung vorausgesetzt) verwenden. Am besten ein eigenes,
+nur dafür gedachtes Postfach nutzen.
 
-1. Unter **„Account"** den **Public Key** kopieren.
-2. Unter **„Account" → „Security"** bei **„Allowed Origins"** die
-   Adresse der App eintragen (z. B. die GitHub-Pages-URL). **Wichtig:**
-   Das verhindert, dass Fremde über das Konto Mails versenden.
+### 2. Cloud Function bereitstellen
 
-### 4. Werte in `index.html` eintragen
+Die Function liegt im Ordner `functions/` dieses Repos.
 
-Im Block `emailjsConfig` die drei Werte eintragen und `APP_URL` auf die
-echte Adresse der App setzen:
+1. Firebase-CLI installieren: `npm install -g firebase-tools`
+2. Anmelden: `firebase login`
+3. Abhängigkeiten installieren: `cd functions && npm install && cd ..`
+4. Bereitstellen: `firebase deploy --only functions`
 
-```js
-const emailjsConfig = {
-    publicKey:  "dein_public_key",
-    serviceId:  "dein_service_id",
-    templateId: "dein_template_id"
-};
-const APP_URL = "https://.../tsv-elstorf.platzbelegung/";
-```
+Die `APP_URL` in `functions/index.js` ggf. auf die echte Adresse der
+App anpassen.
 
-Hinweis: Public Key, Service- und Template-ID stehen sichtbar in der
-`index.html`. Die Beschränkung der „Allowed Origins" (Schritt 3) ist
-deshalb der wichtigste Schutz gegen Missbrauch.
+### 3. Firestore-Regeln
+
+Die `mail`-Sammlung ist in den Sicherheitsregeln (Schritt 6) bereits
+für Clients gesperrt – nur die Function und die Erweiterung (Admin-SDK)
+schreiben dort. Sicherstellen, dass die aktuellen Regeln veröffentlicht
+sind.
+
+Solange die Erweiterung nicht installiert bzw. die Function nicht
+bereitgestellt ist, funktioniert die App normal weiter – es werden dann
+nur keine E-Mails versendet.
 
 ## Als App installieren (PWA)
 

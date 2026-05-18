@@ -1,0 +1,13 @@
+{
+  "name": "tsv-elstorf-functions",
+  "description": "Cloud Functions für E-Mail-Benachrichtigungen des Platzbelegungsplaners",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}
