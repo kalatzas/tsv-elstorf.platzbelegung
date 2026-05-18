@@ -11,7 +11,7 @@ Trainings- und Spielzeiten, nutzbar auf Handy und Desktop.
 - CSV-/JSON-Export, JSON-Import, Drucken
 - **Geteilter Cloud-Plan** über Firebase — alle Geräte sehen denselben Stand,
   Änderungen synchronisieren in Echtzeit
-- **Lesen für alle offen, Bearbeiten mit gemeinsamem Passwort**
+- **Lesen für alle offen; Benutzerkonten mit Rollen (Admin / Trainer / Co-Trainer)**
 - **Installierbar als App (PWA)** auf Handy-Homescreen und Desktop
 
 ## Bedienung
@@ -63,37 +63,63 @@ const firebaseConfig = {
     messagingSenderId: "...",
     appId: "..."
 };
-const EDITOR_EMAIL = "bearbeiter@tsv-elstorf.de";
+const BOOTSTRAP_ADMIN_EMAIL = "bearbeiter@tsv-elstorf.de";
 ```
 
-### 5. Anmeldung einrichten (Bearbeiten-Passwort)
+### 5. Anmeldung & Benutzerrollen einrichten
+
+Die App nutzt echte Benutzerkonten mit Rollen (**Admin / Trainer /
+Co-Trainer**) statt eines gemeinsamen Passworts.
 
 1. Firebase-Konsole → **„Authentication" → „Erste Schritte"**.
 2. Reiter **„Sign-in method"** → **„E-Mail/Passwort"** aktivieren.
 3. Reiter **„Users" → „Nutzer hinzufügen"**:
-   - E-Mail: exakt dieselbe wie `EDITOR_EMAIL` in `index.html`
-   - Passwort: das **gemeinsame Bearbeiten-Passwort** für den Verein
-4. Dieses Passwort an alle weitergeben, die Termine pflegen dürfen.
+   - E-Mail: exakt dieselbe wie `BOOTSTRAP_ADMIN_EMAIL` in `index.html`
+   - Passwort: das persönliche Passwort des ersten Admins
+4. Dieser erste Login legt automatisch das Admin-Profil an. Alle
+   weiteren Trainer-/Co-Trainer-Konten werden danach **in der App**
+   über **„Benutzer"** angelegt (Name, E-Mail, Start-Passwort, Rolle,
+   Teams).
 
 ### 6. Sicherheitsregeln setzen
 
 Firebase-Konsole → **„Firestore Database" → Reiter „Regeln"** — Inhalt durch
-Folgendes ersetzen und **veröffentlichen**:
+Folgendes ersetzen und **veröffentlichen** (E-Mail ggf. anpassen):
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function hasProfile() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isAdmin() { return hasProfile() && role() == 'admin'; }
+
     match /plans/{planId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.role == 'admin'
+            && request.resource.data.email == 'bearbeiter@tsv-elstorf.de'
+            && !exists(/databases/$(database)/documents/users/$(uid)));
     }
   }
 }
 ```
 
-Damit gilt: Plan ist für alle lesbar, Änderungen nur für angemeldete
-Bearbeiter (Schritt 5).
+Damit gilt: Plan ist für alle lesbar, Änderungen nur für Admins;
+Benutzerprofile sind für angemeldete Nutzer lesbar und nur von Admins
+veränderbar. Die letzte Bedingung erlaubt einmalig dem Bootstrap-Admin,
+sein eigenes Profil beim ersten Login anzulegen.
 
 ## Als App installieren (PWA)
 
