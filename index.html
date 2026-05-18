@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.23.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.24.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1007,6 +1007,13 @@
                 return false;
             };
 
+            // Termin-Dialog öffnen; Team wird aus dem Profil vorbefüllt
+            const openAddModal = (extra = {}) => {
+                if (!requireEditor()) return;
+                setNewEvent(ne => ({ ...ne, team: ne.team || (myTeams.length > 0 ? myTeams[0] : ''), ...extra }));
+                setShowAddModal(true);
+            };
+
             // App-eigener Bestätigungsdialog statt window.confirm
             const askConfirm = (message, onConfirm) => setConfirmDialog({ message, onConfirm });
 
@@ -1678,7 +1685,7 @@
                                     <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
                                 )}
                                 {canEdit && (
-                                    <button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="plus" /> <span>Termin</span></button>
+                                    <button onClick={() => openAddModal()} className="flex-1 sm:flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="plus" /> <span>Termin</span></button>
                                 )}
                                 {canEdit && (
                                     <button onClick={() => setShowClosureModal(true)} className="flex-1 sm:flex-none bg-amber-600 text-white px-3 py-2 rounded text-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="ban" /> <span>Sperre</span></button>
@@ -1799,7 +1806,7 @@
                                     : 'Sobald Termine eingetragen sind, erscheinen sie hier. Zum Anlegen bitte anmelden.'}
                             </p>
                             <button
-                                onClick={() => requireEditor() && setShowAddModal(true)}
+                                onClick={() => openAddModal()}
                                 className="bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700 transition-colors inline-flex items-center gap-1.5"
                             >
                                 <Icon name={canEdit ? 'plus' : 'lock'} /> <span>{canEdit ? 'Ersten Termin anlegen' : 'Anmelden'}</span>
@@ -1829,7 +1836,7 @@
                                                 {canEdit && !getFilteredEvents().some(e => e.day === day && e.time === time) && (
                                                     <div
                                                         className="no-print absolute inset-0 hover:bg-green-50 cursor-pointer opacity-30 hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                        onClick={() => { if (!requireEditor()) return; setNewEvent({...newEvent, day, time}); setShowAddModal(true); }}
+                                                        onClick={() => openAddModal({ day, time })}
                                                     >
                                                         <span className="text-gray-400 text-lg">+</span>
                                                     </div>
@@ -1971,7 +1978,7 @@
                                             )}
                                             {dayEvents.map(event => renderEventCard(event))}
                                             {canEdit && (
-                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day: dayName}); setShowAddModal(true); }}>
+                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ day: dayName })}>
                                                     + Hinzufügen
                                                 </div>
                                             )}
@@ -2000,7 +2007,7 @@
                                                 .sort((a, b) => a.time.localeCompare(b.time))
                                                 .map(event => renderEventCard(event))}
                                             {canEdit && (
-                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => { setNewEvent({...newEvent, day}); setShowAddModal(true); }}>
+                                                <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ day })}>
                                                     + Hinzufügen
                                                 </div>
                                             )}
@@ -2148,11 +2155,7 @@
                                                                 {canEdit && !occupyingEvent && !isOccupied && (
                                                                     <div
                                                                         className="no-print absolute inset-0 flex items-center justify-center opacity-30 hover:opacity-100 transition-opacity cursor-pointer"
-                                                                        onClick={() => {
-                                                                            if (!requireEditor()) return;
-                                                                            setNewEvent({...newEvent, day, time, field: field.id});
-                                                                            setShowAddModal(true);
-                                                                        }}
+                                                                        onClick={() => openAddModal({ day, time, field: field.id })}
                                                                     >
                                                                         <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-sm">
                                                                             +
