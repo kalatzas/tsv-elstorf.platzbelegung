@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.26.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.27.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -297,6 +297,7 @@
             const [showInbox, setShowInbox] = useState(false);
             const [myUnitsOnly, setMyUnitsOnly] = useState(false);
             const [viewAsUser, setViewAsUser] = useState(false);
+            const [planDesign, setPlanDesign] = useState('1'); // '1' Karten, '2' nach Platz gruppiert
             const [showRequestsModal, setShowRequestsModal] = useState(false);
             const [eventActionTarget, setEventActionTarget] = useState(null);
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
@@ -592,14 +593,20 @@
                 if (ownsEvent(event)) { setEventActionTarget(event); }
             };
 
-            // Termin-Karte (Kalenderansicht – Desktop und Handy)
-            // Platz-Kürzel als Anker-Element links, feste Team-Farbe als Punkt, Typ als Pille
-            const renderEventCard = (event) => {
+            // Spielarten (mit Gegner)
+            const GAME_TYPES = ['match', 'friendly', 'cup', 'makeup', 'tournament'];
+
+            // Termin-Karte. opts.hideAnchor blendet den Platz-Anker aus
+            // (für Design 2, wo der Platz in der Gruppen-Leiste steht).
+            const renderEventCard = (event, opts = {}) => {
                 const eventType = eventTypes[event.type];
                 const field = fields.find(f => f.id === event.field);
                 const isBlocked = event.type === 'blocked';
                 const isCancelled = !!event.cancelled;
                 const isReq = !!event.isRequest;
+                const isGame = GAME_TYPES.includes(event.type);
+                const heading = isBlocked ? 'Sperre'
+                    : (isGame && event.title ? `${event.team} – ${event.title}` : event.team);
                 return (
                     <div
                         key={event.id}
@@ -613,31 +620,52 @@
                             }
                         }}
                     >
-                        <div className={`${field?.tint || 'bg-gray-100'} flex items-center justify-center px-2`} style={{ minWidth: '46px' }}>
-                            <span className={`${field?.anchor || 'text-gray-600'} font-extrabold text-base leading-none`}>{field?.shortName}</span>
-                        </div>
-                        <div className="flex-1 min-w-0 p-2 space-y-1">
-                            <div className="flex items-start justify-between gap-1.5 flex-wrap">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isBlocked ? '#6b7280' : (teamColors[event.team] || '#9ca3af') }}></span>
-                                    <span className={`text-sm font-bold text-gray-900 truncate leading-tight ${isCancelled ? 'line-through' : ''}`}>{isBlocked ? 'Sperre' : event.team}</span>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                    {isReq && <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ fontSize: '10px' }}>Antrag</span>}
-                                    {isCancelled
-                                        ? <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ fontSize: '10px' }}>fällt aus</span>
-                                        : <span className={`${eventType.pill} px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap`} style={{ fontSize: '10px' }}>{eventType.label}</span>}
-                                </div>
+                        {!opts.hideAnchor && (
+                            <div className={`${field?.tint || 'bg-gray-100'} flex items-center justify-center px-2`} style={{ minWidth: '46px' }}>
+                                <span className={`${field?.anchor || 'text-gray-600'} font-extrabold text-base leading-none`}>{field?.shortName}</span>
                             </div>
-                            <div className="space-y-0.5">
+                        )}
+                        <div className="flex-1 min-w-0 p-2">
+                            <div className="flex items-start gap-1.5 min-w-0">
+                                <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: isBlocked ? '#6b7280' : (teamColors[event.team] || '#9ca3af') }}></span>
+                                <span className={`text-sm font-bold text-gray-900 leading-tight ${isCancelled ? 'line-through' : ''}`}>{heading}</span>
+                            </div>
+                            <div className="space-y-0.5 mt-1">
                                 <div className="flex items-center gap-1 text-gray-700"><Icon name="clock" className="w-3 h-3" /> {event.time} – {getEventEndTime(event)}</div>
                                 <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {field?.name}{!isBlocked && ` (${event.position ? positions.find(p => p.value === event.position)?.label : 'ganzer Platz'})`}</div>
                                 {event.trainer && <div className="flex items-center gap-1 text-gray-600"><Icon name="user" className="w-3 h-3" /> {trainerFirstName(event.trainer)}</div>}
                                 {cabinText(event.cabin) && <div className="flex items-center gap-1 text-gray-600"><Icon name="door" className="w-3 h-3" /> {cabinText(event.cabin)}</div>}
                             </div>
+                            <div className="flex items-center justify-end gap-1 mt-1">
+                                {isReq && <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ fontSize: '10px' }}>Antrag</span>}
+                                {isCancelled
+                                    ? <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ fontSize: '10px' }}>fällt aus</span>
+                                    : <span className={`${eventType.pill} px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap`} style={{ fontSize: '10px' }}>{eventType.label}</span>}
+                            </div>
                         </div>
                     </div>
                 );
+            };
+
+            // Termine eines Tages rendern – Design 1 (Kartenliste) oder
+            // Design 2 (nach Platz gruppiert mit farbiger Platz-Leiste)
+            const renderDayEvents = (dayEvents) => {
+                if (planDesign !== '2') return dayEvents.map(e => renderEventCard(e));
+                const groups = [];
+                dayEvents.forEach(e => {
+                    const last = groups[groups.length - 1];
+                    if (last && last.field === e.field) last.events.push(e);
+                    else groups.push({ field: e.field, events: [e] });
+                });
+                return groups.map((g, i) => {
+                    const fld = fields.find(f => f.id === g.field);
+                    return (
+                        <div key={'grp' + i + (g.field || '')} className="space-y-1">
+                            <div className={`${fld?.headerColor || 'bg-gray-500'} text-white text-xs font-semibold rounded px-2 py-1`}>{fld?.name || 'Ohne Platz'}</div>
+                            {g.events.map(e => renderEventCard(e, { hideAnchor: true }))}
+                        </div>
+                    );
+                });
             };
 
             // Hilfsfunktion für Event-Positionierung
@@ -1689,6 +1717,9 @@
                             )}
                             <div className="flex gap-2 flex-wrap w-full sm:w-auto">
                                 <button onClick={() => setShowFilters(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="filter" /> <span>Filter{hasActiveFilters() ? ' •' : ''}</span></button>
+                                {viewMode === 'calendar' && (
+                                    <button onClick={() => setPlanDesign(d => d === '1' ? '2' : '1')} title="Darstellung umschalten" className="flex-1 sm:flex-none bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300 transition-colors flex items-center justify-center gap-1.5"><Icon name="grid" /> <span>{planDesign === '1' ? 'Design 1: Karten' : 'Design 2: nach Platz'}</span></button>
+                                )}
                                 {!isMobile && (
                                     <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
                                 )}
@@ -1977,8 +2008,7 @@
                     {dataLoaded && viewMode === 'calendar' && isMobile && (
                         <div className="space-y-2 print-overflow-visible">
                             {getUpcomingDays(42).map(({ date, dayName, dateNum, month, weekOffset, isToday }) => {
-                                const dayEvents = getEventsForDay(dayName, weekOffset)
-                                    .sort((a, b) => a.time.localeCompare(b.time));
+                                const dayEvents = getEventsForDay(dayName, weekOffset);
                                 return (
                                     <div key={date.toISOString()} className={`bg-white border rounded-lg ${isToday ? 'border-green-500 border-2' : 'border-gray-200'}`}>
                                         {renderMobileDayHeader(dayName, dateNum, month, isToday)}
@@ -1987,7 +2017,7 @@
                                             {dayEvents.length === 0 && (
                                                 <div className="text-xs text-gray-500 py-1">Keine Termine</div>
                                             )}
-                                            {dayEvents.map(event => renderEventCard(event))}
+                                            {renderDayEvents(dayEvents)}
                                             {canEdit && (
                                                 <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ day: dayName })}>
                                                     + Hinzufügen
@@ -2013,10 +2043,7 @@
                                         </div>
                                         <div className="p-2 space-y-1 flex-1 min-h-[60px]">
                                             {renderDayClosures(iso)}
-                                            {getFilteredEvents()
-                                                .filter(e => e.day === day)
-                                                .sort((a, b) => a.time.localeCompare(b.time))
-                                                .map(event => renderEventCard(event))}
+                                            {renderDayEvents(getFilteredEvents().filter(e => e.day === day))}
                                             {canEdit && (
                                                 <div className="no-print border-2 border-dashed border-gray-300 rounded p-2 text-center cursor-pointer hover:border-green-400 hover:bg-green-50 text-xs transition-colors" onClick={() => openAddModal({ day })}>
                                                     + Hinzufügen
