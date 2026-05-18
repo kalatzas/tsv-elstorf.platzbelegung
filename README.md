@@ -12,6 +12,9 @@ Trainings- und Spielzeiten, nutzbar auf Handy und Desktop.
 - **Geteilter Cloud-Plan** über Firebase — alle Geräte sehen denselben Stand,
   Änderungen synchronisieren in Echtzeit
 - **Lesen für alle offen; Benutzerkonten mit Rollen (Admin / Trainer / Co-Trainer)**
+- **Trainer** können eigene Trainingseinheiten absagen („fällt aus") oder löschen
+- **Antrags-Workflow**: Trainer beantragen Training, Trainingslager, Turnier,
+  Freundschaftsspiel oder Spielverlegung — der Admin genehmigt oder lehnt ab
 - **Installierbar als App (PWA)** auf Handy-Homescreen und Desktop
 
 ## Bedienung
@@ -102,7 +105,12 @@ service cloud.firestore {
 
     match /plans/{planId} {
       allow read: if true;
-      allow write: if isAdmin();
+      // Admins ändern alles; Trainer/Co-Trainer dürfen nur Termine
+      // ändern (Absagen/Löschen eigener Einheiten), nicht Sperren/Trainer.
+      allow write: if isAdmin()
+        || (hasProfile()
+            && request.resource.data.closures == resource.data.closures
+            && request.resource.data.trainers == resource.data.trainers);
     }
     match /users/{uid} {
       allow read: if signedIn();
@@ -112,14 +120,28 @@ service cloud.firestore {
             && request.resource.data.email == 'bearbeiter@tsv-elstorf.de'
             && !exists(/databases/$(database)/documents/users/$(uid)));
     }
+    match /requests/{id} {
+      allow read: if signedIn();
+      allow create: if hasProfile()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.requestedBy == request.auth.uid
+            && resource.data.status == 'pending');
+    }
   }
 }
 ```
 
-Damit gilt: Plan ist für alle lesbar, Änderungen nur für Admins;
-Benutzerprofile sind für angemeldete Nutzer lesbar und nur von Admins
-veränderbar. Die letzte Bedingung erlaubt einmalig dem Bootstrap-Admin,
-sein eigenes Profil beim ersten Login anzulegen.
+Damit gilt: Der Plan ist für alle lesbar. Admins ändern alles;
+Trainer/Co-Trainer dürfen ihre eigenen Trainingseinheiten absagen oder
+löschen (Sperren und die Trainerliste bleiben Admins vorbehalten).
+Anträge dürfen alle angemeldeten Nutzer stellen; entscheiden (genehmigen/
+ablehnen) kann nur ein Admin. Benutzerprofile sind für angemeldete
+Nutzer lesbar und nur von Admins veränderbar; die Sonderbedingung
+erlaubt einmalig dem Bootstrap-Admin, sein Profil beim ersten Login
+anzulegen.
 
 ## Als App installieren (PWA)
 
