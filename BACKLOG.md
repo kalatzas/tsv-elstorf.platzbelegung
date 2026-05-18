@@ -52,5 +52,5 @@ Noch nicht umgesetzt – als Planung festgehalten.
 ## Administration
 
 - [ ] **Teamverwaltung**
-  - Ich möchte in der Admin-Rikke eine Verwaltung der Teams haben. Wir haben für die Plätze auch Hockey und Drohnen-Racing, die unsere Plätze auch nutzen, daher möchte ich flexibel sein bei der Teamverwaltung.
+  - Ich möchte in der Admin-Rolle eine Verwaltung der Teams haben. Wir haben für die Plätze auch Hockey und Drohnen-Racing, die unsere Plätze auch nutzen, daher möchte ich flexibel sein bei der Teamverwaltung.
   - Als zusätzlicher Platz muss die Halle auswählbar sein.
