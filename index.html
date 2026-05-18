@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.35.1'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.36.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -377,6 +377,8 @@
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
+                    // Auswärtsspiele sehen nur Admins und der Trainer des betroffenen Teams
+                    if (event.venue === 'away' && GAME_TYPES.includes(event.type) && !isAdmin && !myTeams.includes(event.team)) return false;
                     return true;
                 }).sort(compareEvents);
             };
@@ -390,6 +392,7 @@
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
+                    if (event.venue === 'away' && GAME_TYPES.includes(event.type) && !isAdmin && !myTeams.includes(event.team)) return false;
                     return true;
                 }).sort(compareEvents);
             };
