@@ -147,7 +147,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.19.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.20.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -239,7 +239,7 @@
             const [requests, setRequests] = useState([]);
             const [inbox, setInbox] = useState([]);
             const [showInbox, setShowInbox] = useState(false);
-            const [showMyUnitsModal, setShowMyUnitsModal] = useState(false);
+            const [myUnitsOnly, setMyUnitsOnly] = useState(false);
             const [showRequestsModal, setShowRequestsModal] = useState(false);
             const [eventActionTarget, setEventActionTarget] = useState(null);
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
@@ -262,6 +262,7 @@
                     if (filters.field && event.field !== filters.field) return false;
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
+                    if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     return true;
                 });
             };
@@ -274,6 +275,7 @@
                     if (filters.field && event.field !== filters.field) return false;
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
+                    if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     return true;
                 });
             };
@@ -671,7 +673,6 @@
                         setShowClosureModal(false);
                         setShowTrainerModal(false);
                         setShowUserModal(false);
-                        setShowMyUnitsModal(false);
                         setShowRequestsModal(false);
                         setShowInbox(false);
                         setEventActionTarget(null);
@@ -1613,7 +1614,18 @@
                                 </p>
                             </div>
                         </div>
-                        <div className="flex gap-2 flex-wrap no-print w-full sm:w-auto">
+                        <div className="flex items-center gap-2 no-print">
+                            {FIREBASE_READY && authUser && (
+                                <button onClick={() => setShowInbox(true)} title="Benachrichtigungen" aria-label="Benachrichtigungen" className="relative bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="bell" className="w-5 h-5" />{unreadInbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{unreadInbox.length}</span>}</button>
+                            )}
+                            {FIREBASE_READY && (authUser ? (
+                                <button onClick={handleLogout} title="Abmelden" aria-label="Abmelden" className="bg-gray-700 text-white p-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center"><Icon name="user" className="w-5 h-5" /></button>
+                            ) : (
+                                <button onClick={() => setShowLoginModal(true)} title="Anmelden" aria-label="Anmelden" className="bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="lock" className="w-5 h-5" /></button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap no-print w-full sm:w-auto mb-4">
                             {!isMobile && (
                             <div className="flex bg-gray-100 rounded p-1 w-full sm:w-auto">
                                 <button onClick={() => setViewMode('table')} title="Tabellenansicht" aria-label="Tabellenansicht" className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${viewMode === 'table' ? 'bg-white shadow font-medium' : 'hover:bg-gray-200'}`}><Icon name="table" /> <span>Tabelle</span></button>
@@ -1633,7 +1645,7 @@
                                     <button onClick={() => setShowClosureModal(true)} className="flex-1 sm:flex-none bg-amber-600 text-white px-3 py-2 rounded text-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="ban" /> <span>Sperre</span></button>
                                 )}
                                 {FIREBASE_READY && isTrainerLike && (
-                                    <button onClick={() => setShowMyUnitsModal(true)} className="flex-1 sm:flex-none bg-green-700 text-white px-3 py-2 rounded text-sm hover:bg-green-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="activity" /> <span>Meine Einheiten</span></button>
+                                    <button onClick={() => setMyUnitsOnly(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${myUnitsOnly ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="activity" /> <span>Meine Einheiten{myUnitsOnly ? ' •' : ''}</span></button>
                                 )}
                                 {FIREBASE_READY && (isAdmin || isTrainerLike) && (
                                     <button onClick={() => setShowRequestsModal(true)} className="relative flex-1 sm:flex-none bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="repeat" /> <span>Anträge</span>{isAdmin && pendingRequests.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{pendingRequests.length}</span>}</button>
@@ -1641,25 +1653,8 @@
                                 {FIREBASE_READY && isAdmin && (
                                     <button onClick={() => setShowUserModal(true)} className="flex-1 sm:flex-none bg-slate-700 text-white px-3 py-2 rounded text-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="users" /> <span>Benutzer</span></button>
                                 )}
-                                {FIREBASE_READY && authUser && (
-                                    <button onClick={() => setShowInbox(true)} title="Benachrichtigungen" aria-label="Benachrichtigungen" className="relative flex-none bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="bell" className="w-5 h-5" />{unreadInbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{unreadInbox.length}</span>}</button>
-                                )}
-                                {FIREBASE_READY && (authUser ? (
-                                    isMobile ? (
-                                        <button onClick={handleLogout} title="Abmelden" aria-label="Abmelden" className="flex-none bg-gray-700 text-white p-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center"><Icon name="user" className="w-5 h-5" /></button>
-                                    ) : (
-                                        <button onClick={handleLogout} className="flex-1 sm:flex-none bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="unlock" /> <span>Abmelden</span></button>
-                                    )
-                                ) : (
-                                    isMobile ? (
-                                        <button onClick={() => setShowLoginModal(true)} title="Anmelden" aria-label="Anmelden" className="flex-none bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="user" className="w-5 h-5" /></button>
-                                    ) : (
-                                        <button onClick={() => setShowLoginModal(true)} className="flex-1 sm:flex-none bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300 transition-colors flex items-center justify-center gap-1.5"><Icon name="lock" /> <span>Anmelden</span></button>
-                                    )
-                                ))}
                             </div>
                         </div>
-                    </div>
 
                     {/* Filter Panel - einblendbar über den Filter-Button */}
                     {showFilters && (
@@ -2610,48 +2605,6 @@
                             </div>
                         );
                     })()}
-
-                    {/* Modal: Meine Einheiten (Trainer) */}
-                    {showMyUnitsModal && (
-                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowMyUnitsModal(false); }}>
-                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex justify-between items-center p-6 border-b">
-                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="activity" className="w-5 h-5" /> Meine Einheiten</h2>
-                                    <button onClick={() => setShowMyUnitsModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-2">
-                                    <p className="text-sm text-gray-600">Trainingseinheiten deiner Teams ({myTeams.join(', ') || 'keine Teams zugewiesen'}). Du kannst sie absagen oder löschen.</p>
-                                    {(() => {
-                                        const mine = events.filter(e => e.type === 'training' && myTeams.includes(e.team))
-                                            .sort((a, b) => (weekdays.indexOf(a.day) - weekdays.indexOf(b.day)) || a.time.localeCompare(b.time));
-                                        if (mine.length === 0) return <p className="text-sm text-gray-500">Keine eigenen Trainingseinheiten gefunden.</p>;
-                                        return mine.map(ev => {
-                                            const fld = fields.find(f => f.id === ev.field);
-                                            return (
-                                                <div key={ev.id} className={`border rounded-md p-2 ${ev.cancelled ? 'bg-red-50 border-red-200' : ''}`}>
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div className="min-w-0">
-                                                            <div className="text-sm font-semibold text-gray-800">{ev.team} {ev.cancelled && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">fällt aus</span>}</div>
-                                                            <div className="text-xs text-gray-500">{ev.day}, {ev.time} – {getEventEndTime(ev)} Uhr · {fld?.name}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1.5 mt-2">
-                                                        {ev.cancelled
-                                                            ? <button onClick={() => reactivateEvent(ev)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">Wieder aktivieren</button>
-                                                            : <button onClick={() => cancelEvent(ev)} className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded">Absagen</button>}
-                                                        <button onClick={() => removeOwnEvent(ev)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">Löschen</button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        });
-                                    })()}
-                                </div>
-                                <div className="flex p-6 border-t bg-gray-50">
-                                    <button onClick={() => setShowMyUnitsModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm">Schließen</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Modal: Anträge */}
                     {showRequestsModal && (
