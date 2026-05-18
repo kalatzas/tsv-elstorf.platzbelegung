@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.28.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.29.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -264,8 +264,8 @@
                 U12: '#06b6d4', U13: '#0d9488', U14: '#8b5cf6', U15: '#ec4899',
                 U16: '#4f46e5', U17: '#10b981', U18: '#6366f1', U19: '#a855f7'
             };
-            const cabins = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
-            const positions = [
+            const DEFAULT_CABINS = ['Kabine 1', 'Kabine 2', 'Kabine 3', 'Kabine 4', 'Kabine 5'];
+            const DEFAULT_POSITIONS = [
                 { value: '', label: 'Keine Angabe', short: '' },
                 { value: 'li', label: 'Links', short: 'Li' },
                 { value: 'mi', label: 'Mitte', short: 'Mi' },
@@ -293,6 +293,10 @@
             const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS);
             const [teams, setTeams] = useState(DEFAULT_TEAMS);
             const [newTeamName, setNewTeamName] = useState('');
+            const [cabins, setCabins] = useState(DEFAULT_CABINS);
+            const [newCabinName, setNewCabinName] = useState('');
+            const [positions, setPositions] = useState(DEFAULT_POSITIONS);
+            const [newPositionName, setNewPositionName] = useState('');
             const [requests, setRequests] = useState([]);
             const [inbox, setInbox] = useState([]);
             const [showInbox, setShowInbox] = useState(false);
@@ -688,12 +692,11 @@
                         timeSlots.indexOf(e.time) !== -1
                     );
                     
-                    // Sortiere Events nach Position (links, mitte, rechts)
+                    // Sortiere Events nach Position (Reihenfolge aus den Stammdaten)
                     sameTimeFieldEvents.sort((a, b) => {
-                        const positionOrder = { 'li': 0, 'mi': 1, 're': 2, '': 3 };
-                        const aOrder = positionOrder[a.position] !== undefined ? positionOrder[a.position] : 3;
-                        const bOrder = positionOrder[b.position] !== undefined ? positionOrder[b.position] : 3;
-                        return aOrder - bOrder;
+                        const ai = positions.findIndex(p => p.value === (a.position || ''));
+                        const bi = positions.findIndex(p => p.value === (b.position || ''));
+                        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
                     });
                     
                     // Finde die Position dieses Events in der sortierten Liste
@@ -807,6 +810,12 @@
                         const savedTeams = localStorage.getItem('football-teams');
                         const parsedTeams = savedTeams ? JSON.parse(savedTeams) : null;
                         setTeams(parsedTeams && parsedTeams.length > 0 ? parsedTeams : DEFAULT_TEAMS);
+                        const savedCabins = localStorage.getItem('football-cabins');
+                        const parsedCabins = savedCabins ? JSON.parse(savedCabins) : null;
+                        setCabins(parsedCabins && parsedCabins.length > 0 ? parsedCabins : DEFAULT_CABINS);
+                        const savedPositions = localStorage.getItem('football-positions');
+                        const parsedPositions = savedPositions ? JSON.parse(savedPositions) : null;
+                        setPositions(parsedPositions && parsedPositions.length > 0 ? parsedPositions : DEFAULT_POSITIONS);
                     } catch (e) {
                         console.error('Fehler beim Laden der Daten:', e);
                         setEvents(EXAMPLE_EVENTS);
@@ -821,6 +830,8 @@
                         setClosures(data && Array.isArray(data.closures) ? data.closures : []);
                         setTeamColors({ ...DEFAULT_TEAM_COLORS, ...((data && data.teamColors) || {}) });
                         setTeams(data && Array.isArray(data.teams) && data.teams.length > 0 ? data.teams : DEFAULT_TEAMS);
+                        setCabins(data && Array.isArray(data.cabins) && data.cabins.length > 0 ? data.cabins : DEFAULT_CABINS);
+                        setPositions(data && Array.isArray(data.positions) && data.positions.length > 0 ? data.positions : DEFAULT_POSITIONS);
                         setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
                         setDataLoaded(true);
                     },
@@ -933,6 +944,17 @@
                 }
             }, [teams, dataLoaded]);
 
+            useEffect(() => {
+                if (!FIREBASE_READY && dataLoaded) {
+                    try {
+                        localStorage.setItem('football-cabins', JSON.stringify(cabins));
+                        localStorage.setItem('football-positions', JSON.stringify(positions));
+                    } catch (e) {
+                        console.error('Fehler beim Speichern der Stammdaten:', e);
+                    }
+                }
+            }, [cabins, positions, dataLoaded]);
+
             // Termine speichern: lokal sofort, in der Cloud für alle
             const commitEvents = (next) => {
                 setEvents(next);
@@ -980,6 +1002,33 @@
                         });
                 }
             };
+
+            const commitStammdaten = (key, value, setter) => {
+                setter(value);
+                if (FIREBASE_READY) {
+                    planDoc().set({ [key]: value, updatedAt: Date.now() }, { merge: true })
+                        .catch((e) => { console.error('Cloud-Speichern fehlgeschlagen:', e); addNotification('Speichern in der Cloud fehlgeschlagen', 'warning'); });
+                }
+            };
+
+            const addCabin = () => {
+                const n = newCabinName.trim();
+                if (!n) return;
+                if (cabins.some(x => x.toLowerCase() === n.toLowerCase())) { addNotification('Diese Kabine gibt es bereits', 'warning'); return; }
+                commitStammdaten('cabins', [...cabins, n], setCabins);
+                setNewCabinName('');
+            };
+            const removeCabin = (c) => commitStammdaten('cabins', cabins.filter(x => x !== c), setCabins);
+
+            const addPosition = () => {
+                const n = newPositionName.trim();
+                if (!n) return;
+                if (positions.some(p => p.label.toLowerCase() === n.toLowerCase())) { addNotification('Diese Position gibt es bereits', 'warning'); return; }
+                const next = [...positions, { value: 'p' + Date.now(), label: n, short: n.slice(0, 3) }];
+                commitStammdaten('positions', next, setPositions);
+                setNewPositionName('');
+            };
+            const removePosition = (val) => commitStammdaten('positions', positions.filter(p => p.value !== val), setPositions);
 
             const addTeam = () => {
                 const n = newTeamName.trim();
@@ -2616,6 +2665,39 @@
                                             className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent"
                                         />
                                         <button onClick={addTeam} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
+                                    </div>
+
+                                    <div className="border-t pt-4 space-y-2">
+                                        <h3 className="text-sm font-semibold text-gray-700">Kabinen</h3>
+                                        <div className="space-y-1.5">
+                                            {cabins.map(c => (
+                                                <div key={c} className="flex items-center gap-2 border rounded-md p-1.5">
+                                                    <span className="flex-1 text-sm font-medium text-gray-800 truncate">{c}</span>
+                                                    <button onClick={() => removeCabin(c)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded px-2 py-1 shrink-0">Entfernen</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input type="text" value={newCabinName} onChange={(e) => setNewCabinName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addCabin(); }} placeholder="Neue Kabine" className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent" />
+                                            <button onClick={addCabin} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t pt-4 space-y-2">
+                                        <h3 className="text-sm font-semibold text-gray-700">Positionen</h3>
+                                        <p className="text-xs text-gray-500">„Keine Angabe" steht im Termin für den ganzen Platz und kann nicht entfernt werden.</p>
+                                        <div className="space-y-1.5">
+                                            {positions.map(p => (
+                                                <div key={p.value} className="flex items-center gap-2 border rounded-md p-1.5">
+                                                    <span className="flex-1 text-sm font-medium text-gray-800 truncate">{p.value ? p.label : 'Keine Angabe (ganzer Platz)'}</span>
+                                                    {p.value && <button onClick={() => removePosition(p.value)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded px-2 py-1 shrink-0">Entfernen</button>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input type="text" value={newPositionName} onChange={(e) => setNewPositionName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addPosition(); }} placeholder="Neue Position" className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent" />
+                                            <button onClick={addPosition} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex p-6 border-t bg-gray-50">
