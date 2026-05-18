@@ -146,8 +146,65 @@
             );
         };
 
+        // Datumsauswahl im deutschen Format (TT.MM.JJJJ), Woche ab Montag.
+        // Wert/onChange arbeiten mit ISO-Strings "JJJJ-MM-TT".
+        const DateField = ({ value, onChange, min, className = '' }) => {
+            const [open, setOpen] = useState(false);
+            const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+            const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            const pad = (n) => String(n).padStart(2, '0');
+            const toIso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+            const fmt = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; };
+            const today = new Date();
+            const base = value ? new Date(value + 'T00:00:00') : today;
+            const [view, setView] = useState({ y: base.getFullYear(), m: base.getMonth() });
+            const first = new Date(view.y, view.m, 1);
+            const startDow = (first.getDay() + 6) % 7;
+            const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+            const cells = [];
+            for (let i = 0; i < startDow; i++) cells.push(null);
+            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+            const todayIso = toIso(today.getFullYear(), today.getMonth(), today.getDate());
+            return (
+                <div className="relative">
+                    <button type="button" onClick={() => setOpen(o => !o)} className={`${className} text-left flex items-center justify-between gap-2`}>
+                        <span className={value ? '' : 'text-gray-400'}>{value ? fmt(value) : 'TT.MM.JJJJ'}</span>
+                        <Icon name="calendar" className="w-4 h-4 text-gray-500" />
+                    </button>
+                    {open && (
+                        <div className="absolute z-50 mt-1 bg-white border rounded-lg shadow-lg p-2 w-64">
+                            <div className="flex items-center justify-between mb-1">
+                                <button type="button" onClick={() => setView(v => v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 })} className="px-2 py-1 rounded hover:bg-gray-100 text-lg leading-none">‹</button>
+                                <span className="text-sm font-semibold">{MONTHS[view.m]} {view.y}</span>
+                                <button type="button" onClick={() => setView(v => v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 })} className="px-2 py-1 rounded hover:bg-gray-100 text-lg leading-none">›</button>
+                            </div>
+                            <div className="grid grid-cols-7 gap-0.5 text-center">
+                                {WD.map(w => <div key={w} className="text-xs text-gray-500 font-medium py-1">{w}</div>)}
+                                {cells.map((d, i) => {
+                                    if (d === null) return <div key={'e' + i}></div>;
+                                    const iso = toIso(view.y, view.m, d);
+                                    const disabled = min && iso < min;
+                                    return (
+                                        <button key={iso} type="button" disabled={disabled}
+                                            onClick={() => { onChange(iso); setOpen(false); }}
+                                            className={`text-sm rounded py-1 ${iso === value ? 'bg-green-600 text-white' : iso === todayIso ? 'bg-green-100' : 'hover:bg-gray-100'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
+                                            {d}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex justify-between mt-1">
+                                {value ? <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="text-xs text-gray-500 hover:text-gray-700">Löschen</button> : <span></span>}
+                                <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700">Schließen</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const App = () => {
-            const APP_VERSION = '2.20.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.21.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -248,7 +305,19 @@
             const emptyRequestForm = { type: 'friendly', team: '', field: '', date: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
             const [requestForm, setRequestForm] = useState(emptyRequestForm);
             const [requestReviewTarget, setRequestReviewTarget] = useState(null);
-            const [reviewForm, setReviewForm] = useState({ field: '', cabin: [] });
+            const [reviewForm, setReviewForm] = useState({ field: '', cabin: [], position: '' });
+
+            // Termine sortieren: nach Platz, dann Art, dann Zeit
+            const eventTypeKeys = Object.keys(eventTypes);
+            const compareEvents = (a, b) => {
+                const fa = fields.findIndex(f => f.id === a.field);
+                const fb = fields.findIndex(f => f.id === b.field);
+                if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
+                const ta = eventTypeKeys.indexOf(a.type);
+                const tb = eventTypeKeys.indexOf(b.type);
+                if (ta !== tb) return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb);
+                return (a.time || '').localeCompare(b.time || '');
+            };
 
             // Gefilterte Events (inkl. offener Anträge)
             const getFilteredEvents = () => {
@@ -258,13 +327,13 @@
                         // Für Serientermine: Prüfe ob sie in der aktuellen Woche liegen
                         if (event.weekOffset !== currentWeek) return false;
                     }
-                    
+
                     if (filters.field && event.field !== filters.field) return false;
                     if (filters.type && event.type !== filters.type) return false;
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     return true;
-                });
+                }).sort(compareEvents);
             };
 
             // Termine eines bestimmten Wochentags in einer bestimmten Woche
@@ -277,7 +346,7 @@
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     return true;
-                });
+                }).sort(compareEvents);
             };
 
             // Liste kommender Tage ab heute (für die mobile Scroll-Ansicht)
@@ -558,7 +627,7 @@
                             </div>
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-1 text-gray-700"><Icon name="clock" className="w-3 h-3" /> {event.time} – {getEventEndTime(event)}</div>
-                                <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {field?.name}{event.position && ` (${positions.find(p => p.value === event.position)?.label})`}</div>
+                                <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {field?.name}{!isBlocked && ` (${event.position ? positions.find(p => p.value === event.position)?.label : 'ganzer Platz'})`}</div>
                                 {event.trainer && <div className="flex items-center gap-1 text-gray-600"><Icon name="user" className="w-3 h-3" /> {event.trainer}</div>}
                                 {cabinText(event.cabin) && <div className="flex items-center gap-1 text-gray-600"><Icon name="door" className="w-3 h-3" /> {cabinText(event.cabin)}</div>}
                             </div>
@@ -1220,29 +1289,31 @@
             // Antragsprüfung öffnen: Platz/Kabinen vorbelegen, dann Dialog anzeigen
             const openReview = (req) => {
                 if (!isAdmin || !req) return;
-                let field = '', cabin = [];
+                let field = '', cabin = [], position = '';
                 if (req.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(req.targetEventId));
                     field = (req.proposed && req.proposed.field) || (target && target.field) || '';
                     cabin = (target && Array.isArray(target.cabin)) ? target.cabin : [];
+                    position = (target && target.position) || '';
                 } else {
                     field = (req.event && req.event.field) || '';
                     cabin = (req.event && Array.isArray(req.event.cabin)) ? req.event.cabin : [];
+                    position = (req.event && req.event.position) || '';
                 }
-                setReviewForm({ field, cabin });
+                setReviewForm({ field, cabin, position });
                 setRequestReviewTarget(req);
                 setRejectTarget(null);
                 setRejectNote('');
             };
 
-            // Antrag genehmigen – mit vom Admin gewähltem Platz und Kabinen
-            const confirmApproveRequest = (req, field, cabin) => {
+            // Antrag genehmigen – mit vom Admin gewähltem Platz, Kabinen und Position
+            const confirmApproveRequest = (req, field, cabin, position) => {
                 if (!isAdmin || !req) return;
                 if (req.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(req.targetEventId));
                     if (!target) { addNotification('Das betroffene Spiel wurde nicht gefunden.', 'warning'); return; }
                     const p = req.proposed || {};
-                    const updated = { ...target, field: field || target.field, cabin,
+                    const updated = { ...target, field: field || target.field, cabin, position: position || '',
                         day: dateToWeekday(p.date) || target.day, time: p.time || target.time,
                         weekOffset: dateToWeekOffset(p.date), eventDate: p.date || '' };
                     const doIt = () => {
@@ -1260,7 +1331,7 @@
                 } else {
                     const ev = req.event || {};
                     const iso = ev.date || ev.eventDate || '';
-                    const newEv = { ...ev, field: field || ev.field || '', cabin, id: Date.now(),
+                    const newEv = { ...ev, field: field || ev.field || '', cabin, position: position || '', id: Date.now(),
                         day: iso ? dateToWeekday(iso) : ev.day,
                         weekOffset: iso ? dateToWeekOffset(iso) : undefined,
                         eventDate: iso };
@@ -2318,10 +2389,9 @@
                                             {newEvent.isSeries && (
                                                 <div className="mt-3">
                                                     <label className="block text-sm font-medium mb-1">Serie bis (Enddatum) *</label>
-                                                    <input
-                                                        type="date"
+                                                    <DateField
                                                         value={newEvent.endDate}
-                                                        onChange={(e) => setNewEvent({...newEvent, endDate: e.target.value})}
+                                                        onChange={(iso) => setNewEvent({...newEvent, endDate: iso})}
                                                         className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                     />
                                                     <p className="text-xs text-gray-500 mt-1">Der Termin wird ab der aktuell angezeigten Woche wöchentlich bis zu diesem Datum wiederholt.</p>
@@ -2360,11 +2430,11 @@
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">Von *</label>
-                                                <input type="date" value={newClosure.fromDate} onChange={(e) => setNewClosure({...newClosure, fromDate: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+                                                <DateField value={newClosure.fromDate} onChange={(iso) => setNewClosure({...newClosure, fromDate: iso})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">Bis</label>
-                                                <input type="date" value={newClosure.toDate} min={newClosure.fromDate || undefined} onChange={(e) => setNewClosure({...newClosure, toDate: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+                                                <DateField value={newClosure.toDate} min={newClosure.fromDate || undefined} onChange={(iso) => setNewClosure({...newClosure, toDate: iso})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
                                             </div>
                                         </div>
                                         <p className="text-xs text-gray-500">Bis-Datum leer lassen für eine eintägige Sperre.</p>
@@ -2638,7 +2708,7 @@
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Neues Datum *</label>
-                                                            <input type="date" value={requestForm.proposedDate} onChange={(e) => setRequestForm({...requestForm, proposedDate: e.target.value})} className="w-full border rounded-md p-2 text-sm" />
+                                                            <DateField value={requestForm.proposedDate} onChange={(iso) => setRequestForm({...requestForm, proposedDate: iso})} className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Neue Uhrzeit *</label>
@@ -2673,7 +2743,7 @@
                                                     <div className="grid grid-cols-3 gap-2">
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Datum *</label>
-                                                            <input type="date" value={requestForm.date} onChange={(e) => setRequestForm({...requestForm, date: e.target.value})} className="w-full border rounded-md p-2 text-sm" />
+                                                            <DateField value={requestForm.date} onChange={(iso) => setRequestForm({...requestForm, date: iso})} className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Uhrzeit *</label>
@@ -2798,6 +2868,12 @@
                                             </select>
                                         </div>
                                         <div>
+                                            <label className="block text-sm font-medium mb-1">Position</label>
+                                            <select value={reviewForm.position} onChange={(e) => setReviewForm({...reviewForm, position: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                {positions.map(p => <option key={p.value} value={p.value}>{p.value ? p.label : 'Ganzer Platz'}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
                                             <label className="block text-sm font-medium mb-1">Kabinen zuweisen</label>
                                             <div className="grid grid-cols-2 gap-1.5">
                                                 {cabins.map(c => {
@@ -2826,7 +2902,7 @@
                                             </>
                                         ) : (
                                             <>
-                                                <button onClick={() => { if (!reviewForm.field) { addNotification('Bitte einen Platz auswählen.', 'warning'); return; } confirmApproveRequest(r, reviewForm.field, reviewForm.cabin); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm">Genehmigen</button>
+                                                <button onClick={() => { if (!reviewForm.field) { addNotification('Bitte einen Platz auswählen.', 'warning'); return; } confirmApproveRequest(r, reviewForm.field, reviewForm.cabin, reviewForm.position); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm">Genehmigen</button>
                                                 <button onClick={() => { setRejectTarget(r.id); setRejectNote(''); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Ablehnen</button>
                                             </>
                                         )}
