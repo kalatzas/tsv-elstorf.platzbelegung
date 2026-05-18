@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.34.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.35.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -277,7 +277,6 @@
                 match: { label: 'Pflichtspiel', color: 'bg-blue-500', icon: 'flag', pill: 'bg-blue-100 text-blue-700' },
                 friendly: { label: 'Freundschaftsspiel', color: 'bg-yellow-500', icon: 'users', pill: 'bg-yellow-100 text-yellow-800' },
                 cup: { label: 'Pokalspiel', color: 'bg-purple-500', icon: 'trophy', pill: 'bg-purple-100 text-purple-700' },
-                makeup: { label: 'Nachholspiel', color: 'bg-red-500', icon: 'history', pill: 'bg-red-100 text-red-700' },
                 camp: { label: 'Trainingslager', color: 'bg-teal-500', icon: 'mapPin', pill: 'bg-teal-100 text-teal-700' },
                 tournament: { label: 'Turnier', color: 'bg-orange-500', icon: 'trophy', pill: 'bg-orange-100 text-orange-800' },
                 blocked: { label: 'Platzsperre', color: 'bg-gray-600', icon: 'ban', pill: 'bg-gray-200 text-gray-700' }
@@ -295,7 +294,7 @@
             ];
 
             const emptyNewEvent = {
-                field: '', date: '', time: '', duration: 1.5, type: 'training',
+                field: '', date: '', time: '', duration: 1.5, type: 'training', venue: 'home',
                 team: '', title: '', cabin: [], trainer: '', position: '', isSeries: false, endDate: ''
             };
             const [newEvent, setNewEvent] = useState(emptyNewEvent);
@@ -481,13 +480,13 @@
             };
 
             // Offene Anträge als termin-ähnliche Objekte für die Plan-Anzeige
-            const requestDisplayEvents = requests.filter(r => r.status === 'pending').map(r => {
+            const requestDisplayEvents = requests.filter(r => r.status === 'pending' || r.status === 'dfbnet').map(r => {
                 if (r.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(r.targetEventId)) || {};
                     const p = r.proposed || {};
                     return {
                         id: 'req-' + r.id, isRequest: true, requestId: r.id, requestKind: 'reschedule', requestType: r.type,
-                        type: target.type || 'match', team: target.team || '?', title: target.title || '',
+                        type: target.type || 'match', team: target.team || '?', title: target.title || '', venue: target.venue || 'home',
                         field: p.field || target.field || '', time: p.time || '', duration: target.duration || 1.5,
                         day: dateToWeekday(p.date), weekOffset: dateToWeekOffset(p.date), eventDate: p.date || '',
                         cabin: target.cabin || [], trainer: target.trainer || '', position: target.position || ''
@@ -635,17 +634,19 @@
             };
 
             // Spielarten (mit Gegner)
-            const GAME_TYPES = ['match', 'friendly', 'cup', 'makeup', 'tournament'];
+            const GAME_TYPES = ['match', 'friendly', 'cup', 'tournament'];
+            const FALLBACK_EVENT_TYPE = { label: 'Unbekannt', color: 'bg-gray-400', icon: 'calendar', pill: 'bg-gray-100 text-gray-700' };
 
             // Termin-Karte. opts.hideAnchor blendet den Platz-Anker aus
             // (für Design 2, wo der Platz in der Gruppen-Leiste steht).
             const renderEventCard = (event, opts = {}) => {
-                const eventType = eventTypes[event.type];
+                const eventType = eventTypes[event.type] || FALLBACK_EVENT_TYPE;
                 const field = fields.find(f => f.id === event.field);
                 const isBlocked = event.type === 'blocked';
                 const isCancelled = !!event.cancelled;
                 const isReq = !!event.isRequest;
                 const isGame = GAME_TYPES.includes(event.type);
+                const isAway = isGame && event.venue === 'away';
                 const heading = isBlocked ? 'Sperre'
                     : (isGame && event.title ? `${event.team} – ${event.title}` : event.team);
                 return (
@@ -662,8 +663,8 @@
                         }}
                     >
                         {!opts.hideAnchor && (
-                            <div className={`${field?.tint || 'bg-gray-100'} flex items-center justify-center px-2`} style={{ minWidth: '46px' }}>
-                                <span className={`${field?.anchor || 'text-gray-600'} font-extrabold text-base leading-none`}>{field?.shortName}</span>
+                            <div className={`${isAway ? 'bg-slate-100' : (field?.tint || 'bg-gray-100')} flex items-center justify-center px-2`} style={{ minWidth: '46px' }}>
+                                <span className={`${isAway ? 'text-slate-500' : (field?.anchor || 'text-gray-600')} font-extrabold text-base leading-none`}>{isAway ? 'A' : field?.shortName}</span>
                             </div>
                         )}
                         <div className="flex-1 min-w-0 p-2">
@@ -673,7 +674,7 @@
                             </div>
                             <div className="space-y-0.5 mt-1">
                                 <div className="flex items-center gap-1 text-gray-700"><Icon name="clock" className="w-3 h-3" /> {event.time} – {getEventEndTime(event)}</div>
-                                <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {field?.name}{!isBlocked && ` (${event.position ? positions.find(p => p.value === event.position)?.label : 'ganzer Platz'})`}</div>
+                                <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {isAway ? 'Auswärts' : <>{field?.name}{!isBlocked && ` (${event.position ? positions.find(p => p.value === event.position)?.label : 'ganzer Platz'})`}</>}</div>
                                 {event.trainer && <div className="flex items-center gap-1 text-gray-600"><Icon name="user" className="w-3 h-3" /> {trainerFirstName(event.trainer)}</div>}
                                 {cabinText(event.cabin) && <div className="flex items-center gap-1 text-gray-600"><Icon name="door" className="w-3 h-3" /> {cabinText(event.cabin)}</div>}
                             </div>
@@ -700,9 +701,10 @@
                 });
                 return groups.map((g, i) => {
                     const fld = fields.find(f => f.id === g.field);
+                    const allAway = !g.field && g.events.every(e => e.venue === 'away');
                     return (
                         <div key={'grp' + i + (g.field || '')} className="space-y-1">
-                            <div className={`${fld?.headerColor || 'bg-gray-500'} text-white text-xs font-semibold rounded px-2 py-1`}>{fld?.name || 'Ohne Platz'}</div>
+                            <div className={`${fld?.headerColor || (allAway ? 'bg-slate-500' : 'bg-gray-500')} text-white text-xs font-semibold rounded px-2 py-1`}>{fld?.name || (allAway ? 'Auswärts' : 'Ohne Platz')}</div>
                             {g.events.map(e => renderEventCard(e, { hideAnchor: true }))}
                         </div>
                     );
@@ -1459,6 +1461,18 @@
                 }).catch(() => addNotification('Antrag konnte nicht aktualisiert werden', 'warning'));
             };
 
+            // Zwischenschritt einer Spielverlegung: DFBNet-Antrag wurde gestellt
+            const markDfbnetSubmitted = (req) => {
+                if (!isAdmin || !req) return;
+                db.collection('requests').doc(req.id).update({
+                    status: 'dfbnet', dfbnetBy: userProfile?.name || 'Admin', dfbnetAt: Date.now()
+                }).then(() => {
+                    addNotification('DFBNet-Antrag vermerkt', 'info');
+                    pushNotification([req.requestedBy], { type: 'request_update', title: 'DFBNet-Antrag gestellt',
+                        body: 'Für deine Spielverlegung wurde der DFBNet-Antrag gestellt. Die Freigabe erfolgt nach DFBNet-Bestätigung.' });
+                }).catch(() => addNotification('Antrag konnte nicht aktualisiert werden', 'warning'));
+            };
+
             // Antragsprüfung öffnen: Platz/Kabinen vorbelegen, dann Dialog anzeigen
             const openReview = (req) => {
                 if (!isAdmin || !req) return;
@@ -1486,9 +1500,13 @@
                     const target = events.find(e => String(e.id) === String(req.targetEventId));
                     if (!target) { addNotification('Das betroffene Spiel wurde nicht gefunden.', 'warning'); return; }
                     const p = req.proposed || {};
-                    const updated = { ...target, field: field || target.field, cabin, position: position || '',
+                    const isAwayTarget = GAME_TYPES.includes(target.type) && target.venue === 'away';
+                    const dateFields = {
                         day: dateToWeekday(p.date) || target.day, time: p.time || target.time,
                         weekOffset: dateToWeekOffset(p.date), eventDate: p.date || '' };
+                    const updated = isAwayTarget
+                        ? { ...target, field: '', cabin: [], position: '', ...dateFields }
+                        : { ...target, field: field || target.field, cabin, position: position || '', ...dateFields };
                     const doIt = () => {
                         commitEvents(events.map(e => e.id === target.id ? updated : e));
                         finishRequest(req, 'approved');
@@ -1544,9 +1562,14 @@
             };
 
             const validateEvent = (event) => {
+                const isAway = GAME_TYPES.includes(event.type) && event.venue === 'away';
                 if (event.type === 'blocked') {
                     if (!event.field || !event.date || !event.time) {
                         return 'Bitte Platz, Tag und Zeit auswählen!';
+                    }
+                } else if (isAway) {
+                    if (!event.date || !event.time || !event.team) {
+                        return 'Bitte alle Pflichtfelder ausfüllen!';
                     }
                 } else {
                     if (!event.field || !event.date || !event.time || !event.team) {
@@ -1581,6 +1604,12 @@
                     if (!eventToAdd.title) {
                         eventToAdd.title = 'Platzsperre';
                     }
+                }
+                // Auswärtsspiele belegen keinen Platz
+                if (GAME_TYPES.includes(eventToAdd.type) && eventToAdd.venue === 'away') {
+                    eventToAdd.field = '';
+                    eventToAdd.position = '';
+                    eventToAdd.cabin = [];
                 }
 
                 // Serientermine im Voraus erzeugen (wöchentlich ab Datum bis Enddatum)
@@ -1638,7 +1667,10 @@
                     addNotification(error, 'warning');
                     return;
                 }
-                const updated = withDateFields(editingEvent, editingEvent.date);
+                const cleaned = (GAME_TYPES.includes(editingEvent.type) && editingEvent.venue === 'away')
+                    ? { ...editingEvent, field: '', position: '', cabin: [] }
+                    : editingEvent;
+                const updated = withDateFields(cleaned, cleaned.date);
                 const commit = () => {
                     commitEvents(events.map(e => e.id === editingEvent.id ? updated : e));
                     setEditingEvent(null);
@@ -2492,6 +2524,20 @@
                                                 />
                                             </div>
                                         )}
+                                        {GAME_TYPES.includes(newEvent.type) && (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Spielort</label>
+                                                <div className="flex gap-2">
+                                                    {[['home', 'Heimspiel'], ['away', 'Auswärtsspiel']].map(([v, lbl]) => (
+                                                        <button key={v} type="button" onClick={() => setNewEvent({...newEvent, venue: v})}
+                                                            className={`flex-1 py-2 px-3 rounded-md text-sm border ${newEvent.venue === v ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300'}`}>
+                                                            {lbl}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {newEvent.venue === 'away' && <p className="text-xs text-gray-500 mt-1">Auswärtsspiele belegen keinen Platz.</p>}
+                                            </div>
+                                        )}
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Trainer</label>
                                             <select value={newEvent.trainer} onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
@@ -2500,6 +2546,7 @@
                                                 {trainerOptions.map(u => <option key={u.uid} value={u.name}>{u.name}</option>)}
                                             </select>
                                         </div>
+                                        {!(GAME_TYPES.includes(newEvent.type) && newEvent.venue === 'away') && (<>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Platz *</label>
                                             <select value={newEvent.field} onChange={(e) => setNewEvent({...newEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
@@ -2537,6 +2584,7 @@
                                                 })}
                                             </div>
                                         </div>
+                                        </>)}
                                         {newEvent.type === 'training' && (
                                         <div className="border-t pt-4">
                                             <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
@@ -2931,8 +2979,8 @@
                                                         <label className="block text-sm font-medium mb-1">Betroffenes Spiel *</label>
                                                         <select value={requestForm.targetEventId} onChange={(e) => setRequestForm({...requestForm, targetEventId: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                                                             <option value="">– bitte wählen –</option>
-                                                            {events.filter(e => myTeams.includes(e.team) && ['match','cup','makeup','friendly','tournament'].includes(e.type) && !e.cancelled).map(e => (
-                                                                <option key={e.id} value={e.id}>{e.team} · {eventTypes[e.type].label}{e.title ? ` (${e.title})` : ''} · {e.day} {e.time}</option>
+                                                            {events.filter(e => myTeams.includes(e.team) && GAME_TYPES.includes(e.type) && !e.cancelled).map(e => (
+                                                                <option key={e.id} value={e.id}>{e.team} · {eventTypes[e.type].label}{e.venue === 'away' ? ' (Auswärts)' : ''}{e.title ? ` (${e.title})` : ''} · {e.day} {e.time}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -2949,13 +2997,21 @@
                                                             </select>
                                                         </div>
                                                     </div>
-                                                    <div>
-                                                        <label className="block text-sm font-medium mb-1">Neuer Platz (optional)</label>
-                                                        <select value={requestForm.proposedField} onChange={(e) => setRequestForm({...requestForm, proposedField: e.target.value})} className="w-full border rounded-md p-2 text-sm">
-                                                            <option value="">unverändert</option>
-                                                            {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                                        </select>
-                                                    </div>
+                                                    {(() => {
+                                                        const rt = events.find(e => String(e.id) === String(requestForm.targetEventId));
+                                                        if (rt && rt.venue === 'away') {
+                                                            return <p className="text-xs text-slate-500">Auswärtsspiel – kein Platz erforderlich.</p>;
+                                                        }
+                                                        return (
+                                                            <div>
+                                                                <label className="block text-sm font-medium mb-1">Neuer Platz (optional)</label>
+                                                                <select value={requestForm.proposedField} onChange={(e) => setRequestForm({...requestForm, proposedField: e.target.value})} className="w-full border rounded-md p-2 text-sm">
+                                                                    <option value="">unverändert</option>
+                                                                    {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </>
                                             ) : (
                                                 <>
@@ -3016,8 +3072,8 @@
                                             const list = (isAdmin ? requests : requests.filter(r => r.requestedBy === authUser?.uid))
                                                 .slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
                                             if (list.length === 0) return <p className="text-sm text-gray-500">Keine Anträge.</p>;
-                                            const statusStyle = { pending: 'bg-amber-100 text-amber-800', approved: 'bg-green-100 text-green-800', rejected: 'bg-red-100 text-red-700' };
-                                            const statusLabel = { pending: 'Offen', approved: 'Genehmigt', rejected: 'Abgelehnt' };
+                                            const statusStyle = { pending: 'bg-amber-100 text-amber-800', dfbnet: 'bg-blue-100 text-blue-800', approved: 'bg-green-100 text-green-800', rejected: 'bg-red-100 text-red-700' };
+                                            const statusLabel = { pending: 'Offen', dfbnet: 'DFBNet-Antrag gestellt', approved: 'Genehmigt', rejected: 'Abgelehnt' };
                                             return list.map(r => {
                                                 const fld = fields.find(f => f.id === (r.event?.field || r.proposed?.field));
                                                 const target = r.kind === 'reschedule' ? events.find(e => String(e.id) === String(r.targetEventId)) : null;
@@ -3035,7 +3091,7 @@
                                                         <div className="text-xs text-gray-400 mt-0.5">von {r.requestedByName}</div>
                                                         {r.note && <div className="text-xs text-gray-600 mt-1 italic">„{r.note}"</div>}
                                                         {r.adminNote && <div className="text-xs text-red-600 mt-1">Admin: {r.adminNote}</div>}
-                                                        {isAdmin && r.status === 'pending' && (
+                                                        {isAdmin && (r.status === 'pending' || r.status === 'dfbnet') && (
                                                             rejectTarget === r.id ? (
                                                                 <div className="mt-2 space-y-1.5">
                                                                     <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} rows="2" className="w-full border rounded p-1.5 text-xs" placeholder="Grund (optional)" />
@@ -3046,7 +3102,9 @@
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex gap-1.5 mt-2">
-                                                                    <button onClick={() => { setShowRequestsModal(false); openReview(r); }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">Prüfen / Genehmigen</button>
+                                                                    {r.kind === 'reschedule' && r.status === 'pending'
+                                                                        ? <button onClick={() => markDfbnetSubmitted(r)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">DFBNet-Antrag gestellt</button>
+                                                                        : <button onClick={() => { setShowRequestsModal(false); openReview(r); }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">Prüfen / Genehmigen</button>}
                                                                     <button onClick={() => { setRejectTarget(r.id); setRejectNote(''); }} className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">Ablehnen</button>
                                                                 </div>
                                                             )
@@ -3075,6 +3133,8 @@
                         const dateIso = r.kind === 'reschedule' ? (r.proposed && r.proposed.date) : (ev.date || ev.eventDate);
                         const time = r.kind === 'reschedule' ? (r.proposed && r.proposed.time) : ev.time;
                         const teamName = r.kind === 'reschedule' ? (target && target.team) : ev.team;
+                        const reqType = r.kind === 'reschedule' ? (target && target.type) : ev.type;
+                        const isAwayReview = GAME_TYPES.includes(reqType) && (r.kind === 'reschedule' ? (target && target.venue === 'away') : (ev.venue === 'away'));
                         return (
                             <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setRequestReviewTarget(null); }}>
                                 <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -3091,6 +3151,9 @@
                                             <div className="text-gray-500 text-xs">Antragsteller: {r.requestedByName}</div>
                                             {r.note && <div className="text-gray-700 text-xs italic">„{r.note}"</div>}
                                         </div>
+                                        {isAwayReview
+                                            ? <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-sm text-slate-600">Auswärtsspiel – es wird kein Platz belegt.</div>
+                                            : (<>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Platz {r.kind === 'reschedule' ? '' : '*'}</label>
                                             <select value={reviewForm.field} onChange={(e) => setReviewForm({...reviewForm, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
@@ -3118,6 +3181,7 @@
                                                 })}
                                             </div>
                                         </div>
+                                        </>)}
                                         {rejectTarget === r.id && (
                                             <div className="space-y-1.5">
                                                 <label className="block text-sm font-medium">Grund der Ablehnung (optional)</label>
@@ -3133,7 +3197,7 @@
                                             </>
                                         ) : (
                                             <>
-                                                <button onClick={() => { if (!reviewForm.field) { addNotification('Bitte einen Platz auswählen.', 'warning'); return; } confirmApproveRequest(r, reviewForm.field, reviewForm.cabin, reviewForm.position); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm">Genehmigen</button>
+                                                <button onClick={() => { if (!isAwayReview && r.kind !== 'reschedule' && !reviewForm.field) { addNotification('Bitte einen Platz auswählen.', 'warning'); return; } confirmApproveRequest(r, isAwayReview ? '' : reviewForm.field, isAwayReview ? [] : reviewForm.cabin, isAwayReview ? '' : reviewForm.position); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm">Genehmigen</button>
                                                 <button onClick={() => { setRejectTarget(r.id); setRejectNote(''); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Ablehnen</button>
                                             </>
                                         )}
@@ -3219,6 +3283,20 @@
                                                 <input type="text" value={editingEvent.title || ''} onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="z.B. FC Hamburg" />
                                             </div>
                                         )}
+                                        {GAME_TYPES.includes(editingEvent.type) && (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Spielort</label>
+                                                <div className="flex gap-2">
+                                                    {[['home', 'Heimspiel'], ['away', 'Auswärtsspiel']].map(([v, lbl]) => (
+                                                        <button key={v} type="button" onClick={() => setEditingEvent({...editingEvent, venue: v})}
+                                                            className={`flex-1 py-2 px-3 rounded-md text-sm border ${(editingEvent.venue || 'home') === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>
+                                                            {lbl}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {editingEvent.venue === 'away' && <p className="text-xs text-gray-500 mt-1">Auswärtsspiele belegen keinen Platz.</p>}
+                                            </div>
+                                        )}
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Trainer</label>
                                             <select value={editingEvent.trainer || ''} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
@@ -3227,9 +3305,11 @@
                                                 {trainerOptions.map(u => <option key={u.uid} value={u.name}>{u.name}</option>)}
                                             </select>
                                         </div>
+                                        {!(GAME_TYPES.includes(editingEvent.type) && editingEvent.venue === 'away') && (<>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Platz</label>
                                             <select value={editingEvent.field} onChange={(e) => setEditingEvent({...editingEvent, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                                <option value="">Wählen</option>
                                                 {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                                             </select>
                                         </div>
@@ -3259,6 +3339,7 @@
                                                 })}
                                             </div>
                                         </div>
+                                        </>)}
                                         <label className="flex items-center gap-2 text-sm border rounded-md p-2 cursor-pointer">
                                             <input type="checkbox" checked={!!editingEvent.cancelled} onChange={(e) => setEditingEvent({...editingEvent, cancelled: e.target.checked})} className="w-4 h-4 accent-red-600" />
                                             <span>Fällt aus (bleibt als „fällt aus" sichtbar)</span>
