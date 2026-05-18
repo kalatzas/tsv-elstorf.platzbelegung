@@ -160,7 +160,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.13.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.14.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -212,7 +212,7 @@
             })();
             const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
             const teams = ['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19'];
-            const teamColors = {
+            const DEFAULT_TEAM_COLORS = {
                 U8: '#ef4444', U9: '#eab308', U10: '#84cc16', U11: '#f97316',
                 U12: '#06b6d4', U13: '#0d9488', U14: '#8b5cf6', U15: '#ec4899',
                 U16: '#4f46e5', U17: '#10b981', U18: '#6366f1', U19: '#a855f7'
@@ -243,6 +243,7 @@
 
             const [newClosure, setNewClosure] = useState({ field: '', fromDate: '', toDate: '', reason: '' });
             const [trainers, setTrainers] = useState([]);
+            const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS);
             const [showTrainerModal, setShowTrainerModal] = useState(false);
             const [newTrainerName, setNewTrainerName] = useState('');
             const [requests, setRequests] = useState([]);
@@ -650,6 +651,8 @@
                         setClosures(savedClosures ? JSON.parse(savedClosures) : []);
                         const savedTrainers = localStorage.getItem('football-trainers');
                         setTrainers(savedTrainers ? JSON.parse(savedTrainers) : []);
+                        const savedColors = localStorage.getItem('football-teamcolors');
+                        setTeamColors({ ...DEFAULT_TEAM_COLORS, ...(savedColors ? JSON.parse(savedColors) : {}) });
                     } catch (e) {
                         console.error('Fehler beim Laden der Daten:', e);
                         setEvents(EXAMPLE_EVENTS);
@@ -663,6 +666,7 @@
                         setEvents(data && Array.isArray(data.events) ? data.events : []);
                         setClosures(data && Array.isArray(data.closures) ? data.closures : []);
                         setTrainers(data && Array.isArray(data.trainers) ? data.trainers : []);
+                        setTeamColors({ ...DEFAULT_TEAM_COLORS, ...((data && data.teamColors) || {}) });
                         setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
                         setDataLoaded(true);
                     },
@@ -764,6 +768,17 @@
                 }
             }, [trainers, dataLoaded]);
 
+            // Lokaler Fallback: Teamfarben in localStorage sichern (nur ohne Firebase)
+            useEffect(() => {
+                if (!FIREBASE_READY && dataLoaded) {
+                    try {
+                        localStorage.setItem('football-teamcolors', JSON.stringify(teamColors));
+                    } catch (e) {
+                        console.error('Fehler beim Speichern der Teamfarben:', e);
+                    }
+                }
+            }, [teamColors, dataLoaded]);
+
             // Termine speichern: lokal sofort, in der Cloud für alle
             const commitEvents = (next) => {
                 setEvents(next);
@@ -793,6 +808,18 @@
                 setTrainers(next);
                 if (FIREBASE_READY) {
                     planDoc().set({ trainers: next, updatedAt: Date.now() }, { merge: true })
+                        .catch((e) => {
+                            console.error('Cloud-Speichern fehlgeschlagen:', e);
+                            addNotification('Speichern in der Cloud fehlgeschlagen', 'warning');
+                        });
+                }
+            };
+
+            // Teamfarben speichern: lokal sofort, in der Cloud für alle
+            const commitTeamColors = (next) => {
+                setTeamColors(next);
+                if (FIREBASE_READY) {
+                    planDoc().set({ teamColors: next, updatedAt: Date.now() }, { merge: true })
                         .catch((e) => {
                             console.error('Cloud-Speichern fehlgeschlagen:', e);
                             addNotification('Speichern in der Cloud fehlgeschlagen', 'warning');
@@ -2324,6 +2351,27 @@
                                         <div className="flex gap-2">
                                             <button onClick={saveUser} className="flex-1 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md text-sm transition-colors">{userForm.uid ? 'Speichern' : 'Benutzer anlegen'}</button>
                                             {userForm.uid && <button onClick={() => setUserForm({ uid: '', name: '', email: '', password: '', role: 'trainer', teams: [] })} className="bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3 border-t pt-4">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-sm font-semibold text-gray-700">Teamfarben</h3>
+                                            <button onClick={() => commitTeamColors(DEFAULT_TEAM_COLORS)} className="text-xs text-blue-700 hover:underline">Standardfarben</button>
+                                        </div>
+                                        <p className="text-xs text-gray-500">Farbe je Team – wird im Plan als farbiger Punkt angezeigt.</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {teams.map(t => (
+                                                <label key={t} className="flex items-center gap-2 border rounded-md p-1.5 cursor-pointer">
+                                                    <input
+                                                        type="color"
+                                                        value={teamColors[t] || '#9ca3af'}
+                                                        onChange={(e) => setTeamColors({ ...teamColors, [t]: e.target.value })}
+                                                        onBlur={(e) => commitTeamColors({ ...teamColors, [t]: e.target.value })}
+                                                        className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer shrink-0"
+                                                    />
+                                                    <span className="text-sm font-medium text-gray-800">{t}</span>
+                                                </label>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
