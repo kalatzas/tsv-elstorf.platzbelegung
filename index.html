@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.25.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.26.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -213,6 +213,7 @@
             const [allUsers, setAllUsers] = useState([]);
             const [showLoginModal, setShowLoginModal] = useState(false);
             const [showUserModal, setShowUserModal] = useState(false);
+            const [showStammdatenModal, setShowStammdatenModal] = useState(false);
             const emptyUserForm = { uid: '', firstName: '', lastName: '', email: '', password: '', role: 'trainer', teams: [] };
             const [userForm, setUserForm] = useState(emptyUserForm);
             const [loginEmail, setLoginEmail] = useState('');
@@ -744,6 +745,7 @@
                         setShowLoginModal(false);
                         setShowClosureModal(false);
                         setShowUserModal(false);
+                        setShowStammdatenModal(false);
                         setShowRequestsModal(false);
                         setShowInbox(false);
                         setEventActionTarget(null);
@@ -1705,6 +1707,9 @@
                                 {FIREBASE_READY && isAdmin && (
                                     <button onClick={() => setShowUserModal(true)} className="flex-1 sm:flex-none bg-slate-700 text-white px-3 py-2 rounded text-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="users" /> <span>Benutzer</span></button>
                                 )}
+                                {FIREBASE_READY && isAdmin && (
+                                    <button onClick={() => setShowStammdatenModal(true)} className="flex-1 sm:flex-none bg-slate-600 text-white px-3 py-2 rounded text-sm hover:bg-slate-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="grid" /> <span>Stammdaten</span></button>
+                                )}
                             </div>
                         </div>
 
@@ -2525,42 +2530,57 @@
                                             {userForm.uid && <button onClick={() => setUserForm(emptyUserForm)} className="bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>}
                                         </div>
                                     </div>
-                                    <div className="space-y-3 border-t pt-4">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-sm font-semibold text-gray-700">Teams &amp; Farben</h3>
-                                            <button onClick={() => commitTeamColors(DEFAULT_TEAM_COLORS)} className="text-xs text-blue-700 hover:underline">Standardfarben</button>
-                                        </div>
-                                        <p className="text-xs text-gray-500">Teams verwalten – Farbe je Team wird im Plan als farbiger Punkt angezeigt.</p>
-                                        <div className="space-y-1.5">
-                                            {teams.map(t => (
-                                                <div key={t} className="flex items-center gap-2 border rounded-md p-1.5">
-                                                    <input
-                                                        type="color"
-                                                        value={teamColors[t] || '#9ca3af'}
-                                                        onChange={(e) => setTeamColors({ ...teamColors, [t]: e.target.value })}
-                                                        onBlur={(e) => commitTeamColors({ ...teamColors, [t]: e.target.value })}
-                                                        className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer shrink-0"
-                                                    />
-                                                    <span className="flex-1 text-sm font-medium text-gray-800 truncate">{t}</span>
-                                                    <button onClick={() => removeTeam(t)} title="Team entfernen" className="text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded px-2 py-1 shrink-0">Entfernen</button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={newTeamName}
-                                                onChange={(e) => setNewTeamName(e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') addTeam(); }}
-                                                placeholder="Neues Team (z. B. Hockey)"
-                                                className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent"
-                                            />
-                                            <button onClick={addTeam} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
-                                        </div>
-                                    </div>
                                 </div>
                                 <div className="flex p-6 border-t bg-gray-50">
                                     <button onClick={() => setShowUserModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal: Stammdaten (Teams & Farben) */}
+                    {showStammdatenModal && (
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowStammdatenModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-between items-center p-6 border-b">
+                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="grid" className="w-5 h-5" /> Stammdaten</h2>
+                                    <button onClick={() => setShowStammdatenModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-sm font-semibold text-gray-700">Teams &amp; Farben</h3>
+                                        <button onClick={() => commitTeamColors(DEFAULT_TEAM_COLORS)} className="text-xs text-blue-700 hover:underline">Standardfarben</button>
+                                    </div>
+                                    <p className="text-xs text-gray-500">Teams verwalten – die Farbe je Team wird im Plan als farbiger Punkt angezeigt.</p>
+                                    <div className="space-y-1.5">
+                                        {teams.map(t => (
+                                            <div key={t} className="flex items-center gap-2 border rounded-md p-1.5">
+                                                <input
+                                                    type="color"
+                                                    value={teamColors[t] || '#9ca3af'}
+                                                    onChange={(e) => setTeamColors({ ...teamColors, [t]: e.target.value })}
+                                                    onBlur={(e) => commitTeamColors({ ...teamColors, [t]: e.target.value })}
+                                                    className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer shrink-0"
+                                                />
+                                                <span className="flex-1 text-sm font-medium text-gray-800 truncate">{t}</span>
+                                                <button onClick={() => removeTeam(t)} title="Team entfernen" className="text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded px-2 py-1 shrink-0">Entfernen</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={newTeamName}
+                                            onChange={(e) => setNewTeamName(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') addTeam(); }}
+                                            placeholder="Neues Team (z. B. Hockey)"
+                                            className="flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                                        />
+                                        <button onClick={addTeam} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-sm">Hinzufügen</button>
+                                    </div>
+                                </div>
+                                <div className="flex p-6 border-t bg-gray-50">
+                                    <button onClick={() => setShowStammdatenModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
                                 </div>
                             </div>
                         </div>
