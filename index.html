@@ -147,7 +147,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.16.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.17.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1174,7 +1174,8 @@
                     return;
                 }
                 
-                const isSeries = !!newEvent.isSeries;
+                // Serien nur für Trainingseinheiten – Spiele sind Einzeltermine
+                const isSeries = newEvent.type === 'training' && !!newEvent.isSeries;
 
                 const eventToAdd = {...newEvent};
                 delete eventToAdd.isSeries;
@@ -2076,7 +2077,7 @@
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Typ *</label>
-                                            <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                            <select value={newEvent.type} onChange={(e) => setNewEvent({...newEvent, type: e.target.value, isSeries: e.target.value === 'training' ? newEvent.isSeries : false})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
                                                 {['training', 'match', 'friendly', 'cup', 'makeup', 'camp', 'tournament'].map(k => <option key={k} value={k}>{eventTypes[k].label}</option>)}
                                             </select>
                                         </div>
@@ -2157,6 +2158,7 @@
                                                 {positions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                                             </select>
                                         </div>
+                                        {newEvent.type === 'training' && (
                                         <div className="border-t pt-4">
                                             <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                                                 <input
@@ -2181,6 +2183,7 @@
                                                 </div>
                                             )}
                                         </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex gap-3 p-6 border-t bg-gray-50">
