@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.33.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.34.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -344,6 +344,13 @@
 
             // Termine sortieren: nach Platz, Art, Zeit, dann Jugend aufsteigend
             const eventTypeKeys = Object.keys(eventTypes);
+            // Antragsarten = vom Admin verwaltete Terminarten (+ Spielverlegung als Sonderfall)
+            const requestTypeOptions = (() => {
+                const out = {};
+                eventTypeKeys.forEach(k => { if (k !== 'blocked') out[k] = eventTypes[k].label; });
+                out.reschedule = 'Spielverlegung';
+                return out;
+            })();
             const compareEvents = (a, b) => {
                 const fa = fields.findIndex(f => f.id === a.field);
                 const fb = fields.findIndex(f => f.id === b.field);
@@ -1165,8 +1172,6 @@
             const canEdit = isAdmin;
 
             const ROLE_LABELS = { admin: 'Admin', trainer: 'Trainer', cotrainer: 'Co-Trainer' };
-            const REQUEST_TYPE_LABELS = { friendly: 'Freundschaftsspiel', reschedule: 'Spielverlegung', training: 'Zusätzliches Training', tournament: 'Turnier / Leistungsvergleich', camp: 'Trainingslager' };
-            const REQUEST_EVENT_TYPE = { training: 'training', camp: 'camp', tournament: 'tournament', friendly: 'friendly' };
 
             // Trainer/Co-Trainer – oder ein Admin, der die Benutzer-Ansicht testet
             const isTrainerLike = userRole === 'trainer' || userRole === 'cotrainer' || (isRealAdmin && viewAsUser);
@@ -1428,7 +1433,7 @@
                         return;
                     }
                     payload = { ...base, kind: 'new', event: {
-                        type: REQUEST_EVENT_TYPE[f.type], team, field: f.field || '',
+                        type: f.type, team, field: f.field || '',
                         date: f.date, day: dateToWeekday(f.date),
                         time: f.time, duration: f.duration || 1.5, title: f.title.trim(),
                         cabin: [], trainer: userProfile.name, position: ''
@@ -1439,7 +1444,7 @@
                     addNotification('Antrag eingereicht', 'success');
                     pushNotification(adminUids(), {
                         type: 'request_new', title: 'Neuer Antrag',
-                        body: `${userProfile.name}: ${REQUEST_TYPE_LABELS[f.type] || f.type}`
+                        body: `${userProfile.name}: ${requestTypeOptions[f.type] || f.type}`
                     });
                     setRequestForm(emptyRequestForm);
                 } catch (e) {
@@ -1510,7 +1515,7 @@
                         setRequestReviewTarget(null);
                         addNotification('Antrag genehmigt – Termin angelegt', 'success');
                         pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
-                            body: `Dein Antrag „${REQUEST_TYPE_LABELS[req.type] || req.type}" wurde genehmigt und der Termin angelegt.` });
+                            body: `Dein Antrag „${requestTypeOptions[req.type] || req.type}" wurde genehmigt und der Termin angelegt.` });
                     };
                     const conf = findConflicts(newEv);
                     const closConf = closuresForEvent(newEv);
@@ -1524,7 +1529,7 @@
                 finishRequest(req, 'rejected', note);
                 addNotification('Antrag abgelehnt', 'info');
                 pushNotification([req.requestedBy], { type: 'request_rejected', title: 'Antrag abgelehnt',
-                    body: `Dein Antrag „${REQUEST_TYPE_LABELS[req.type] || req.type}" wurde abgelehnt.${note && note.trim() ? ' Grund: ' + note.trim() : ''}` });
+                    body: `Dein Antrag „${requestTypeOptions[req.type] || req.type}" wurde abgelehnt.${note && note.trim() ? ' Grund: ' + note.trim() : ''}` });
                 setRejectTarget(null);
                 setRejectNote('');
                 setRequestReviewTarget(null);
@@ -2815,8 +2820,8 @@
                                     </div>
 
                                     <div className="border-t pt-4 space-y-2">
-                                        <h3 className="text-sm font-semibold text-gray-700">Terminarten</h3>
-                                        <p className="text-xs text-gray-500">Bestehende Arten umbenennen oder neue hinzufügen (neue Arten erhalten automatisch eine Farbe).</p>
+                                        <h3 className="text-sm font-semibold text-gray-700">Termin- &amp; Antragsarten</h3>
+                                        <p className="text-xs text-gray-500">Diese Arten stehen sowohl bei Terminen als auch bei Anträgen zur Auswahl. Bestehende umbenennen oder neue hinzufügen (neue Arten erhalten automatisch eine Farbe).</p>
                                         <div className="space-y-1.5">
                                             {eventTypeKeys.map(k => {
                                                 const isCustom = customTypes.some(t => t.id === k);
@@ -2917,7 +2922,7 @@
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">Art *</label>
                                                 <select value={requestForm.type} onChange={(e) => setRequestForm({...requestForm, type: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                                                    {Object.entries(REQUEST_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                                                    {Object.entries(requestTypeOptions).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                                                 </select>
                                             </div>
                                             {requestForm.type === 'reschedule' ? (
@@ -3019,7 +3024,7 @@
                                                 return (
                                                     <div key={r.id} className="border rounded-md p-2">
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="text-sm font-semibold text-gray-800">{REQUEST_TYPE_LABELS[r.type] || r.type}</span>
+                                                            <span className="text-sm font-semibold text-gray-800">{requestTypeOptions[r.type] || r.type}</span>
                                                             <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${statusStyle[r.status]}`}>{statusLabel[r.status]}</span>
                                                         </div>
                                                         <div className="text-xs text-gray-600 mt-0.5">
@@ -3079,7 +3084,7 @@
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-5 space-y-3">
                                         <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-1 text-sm">
-                                            <div className="font-semibold">{REQUEST_TYPE_LABELS[r.type] || r.type}</div>
+                                            <div className="font-semibold">{requestTypeOptions[r.type] || r.type}</div>
                                             <div className="text-gray-700">{teamName || '?'} · {formatISODate(dateIso)} {time} Uhr</div>
                                             {r.kind === 'reschedule' && target && <div className="text-gray-600 text-xs">Bisher: {target.day} {target.time} Uhr{target.field ? ` · ${fields.find(f => f.id === target.field)?.name}` : ''}</div>}
                                             {ev.title && <div className="text-gray-600 text-xs">{ev.title}</div>}
