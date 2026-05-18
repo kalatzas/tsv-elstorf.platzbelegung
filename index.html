@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.30.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.31.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -305,7 +305,7 @@
             const [showInbox, setShowInbox] = useState(false);
             const [myUnitsOnly, setMyUnitsOnly] = useState(false);
             const [viewAsUser, setViewAsUser] = useState(false);
-            const [planDesign, setPlanDesign] = useState('1'); // '1' Karten, '2' nach Platz gruppiert
+            const [planDesign, setPlanDesign] = useState('2'); // '1' Karten, '2' nach Platz gruppiert
             const [showRequestsModal, setShowRequestsModal] = useState(false);
             const [eventActionTarget, setEventActionTarget] = useState(null);
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
@@ -1822,9 +1822,6 @@
                             )}
                             <div className="flex gap-2 flex-wrap w-full sm:w-auto">
                                 <button onClick={() => setShowFilters(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="filter" /> <span>Filter{hasActiveFilters() ? ' •' : ''}</span></button>
-                                {viewMode === 'calendar' && (
-                                    <button onClick={() => setPlanDesign(d => d === '1' ? '2' : '1')} title="Darstellung umschalten" className="flex-1 sm:flex-none bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm hover:bg-gray-300 transition-colors flex items-center justify-center gap-1.5"><Icon name="grid" /> <span>{planDesign === '1' ? 'Design 1: Karten' : 'Design 2: nach Platz'}</span></button>
-                                )}
                                 {!isMobile && (
                                     <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
                                 )}
