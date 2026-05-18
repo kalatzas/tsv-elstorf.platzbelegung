@@ -204,7 +204,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.21.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.22.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -307,7 +307,7 @@
             const [requestReviewTarget, setRequestReviewTarget] = useState(null);
             const [reviewForm, setReviewForm] = useState({ field: '', cabin: [], position: '' });
 
-            // Termine sortieren: nach Platz, dann Art, dann Zeit
+            // Termine sortieren: nach Platz, Art, Zeit, dann Jugend aufsteigend
             const eventTypeKeys = Object.keys(eventTypes);
             const compareEvents = (a, b) => {
                 const fa = fields.findIndex(f => f.id === a.field);
@@ -316,7 +316,11 @@
                 const ta = eventTypeKeys.indexOf(a.type);
                 const tb = eventTypeKeys.indexOf(b.type);
                 if (ta !== tb) return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb);
-                return (a.time || '').localeCompare(b.time || '');
+                const tc = (a.time || '').localeCompare(b.time || '');
+                if (tc !== 0) return tc;
+                const ya = teams.indexOf(a.team);
+                const yb = teams.indexOf(b.team);
+                return (ya < 0 ? 999 : ya) - (yb < 0 ? 999 : yb);
             };
 
             // Gefilterte Events (inkl. offener Anträge)
