@@ -68,7 +68,7 @@ const firebaseConfig = {
     messagingSenderId: "...",
     appId: "..."
 };
-const BOOTSTRAP_ADMIN_EMAIL = "bearbeiter@tsv-elstorf.de";
+const BOOTSTRAP_ADMIN_EMAIL = "kosta@alatzas.de";
 ```
 
 ### 5. Anmeldung & Benutzerrollen einrichten
@@ -119,7 +119,7 @@ service cloud.firestore {
       allow write: if isAdmin()
         || (signedIn() && request.auth.uid == uid
             && request.resource.data.role == 'admin'
-            && request.resource.data.email == 'bearbeiter@tsv-elstorf.de'
+            && request.resource.data.email == 'kosta@alatzas.de'
             && !exists(/databases/$(database)/documents/users/$(uid)));
     }
     match /requests/{id} {
