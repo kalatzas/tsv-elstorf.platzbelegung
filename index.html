@@ -160,7 +160,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.14.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.15.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -252,6 +252,7 @@
             const [showMyUnitsModal, setShowMyUnitsModal] = useState(false);
             const [showRequestsModal, setShowRequestsModal] = useState(false);
             const [eventActionTarget, setEventActionTarget] = useState(null);
+            const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
             const [rejectTarget, setRejectTarget] = useState(null);
             const [rejectNote, setRejectNote] = useState('');
             const emptyRequestForm = { type: 'training', team: '', field: '', day: '', time: '', duration: 1.5, title: '', cabin: [], note: '', targetEventId: '', proposedDay: '', proposedTime: '', proposedField: '' };
@@ -627,6 +628,7 @@
                         setShowRequestsModal(false);
                         setShowInbox(false);
                         setEventActionTarget(null);
+                        setSeriesDeleteTarget(null);
                         setConfirmDialog(null);
                         setEditingEvent(null);
                     }
@@ -1212,12 +1214,13 @@
                     const baseDate = getWeekStart(currentWeek);
                     const dayIndex = weekdays.indexOf(eventToAdd.day);
                     const end = new Date(newEvent.endDate + 'T23:59:59');
+                    const seriesId = 'S' + Date.now();
                     seriesEvents = [];
                     for (let week = 0; week < 60; week++) {
                         const eventDate = new Date(baseDate);
                         eventDate.setDate(baseDate.getDate() + dayIndex + (week * 7));
                         if (eventDate > end) break;
-                        seriesEvents.push({ ...eventToAdd, id: Date.now() + week, isSeriesEvent: true, weekOffset: week, eventDate: eventDate.toISOString() });
+                        seriesEvents.push({ ...eventToAdd, id: Date.now() + week, seriesId, isSeriesEvent: true, weekOffset: week, eventDate: eventDate.toISOString() });
                     }
                     if (seriesEvents.length === 0) {
                         addNotification('Im gewählten Zeitraum liegt kein Termin – bitte Enddatum prüfen.', 'warning');
@@ -1270,20 +1273,45 @@
                 }
             };
 
+            // Findet alle Termine, die zur selben Serie gehören
+            const getSeriesSiblings = (event) => {
+                if (!event) return [];
+                if (event.seriesId) return events.filter(e => e.seriesId === event.seriesId);
+                // Altdaten ohne seriesId: heuristisch über gleiche Eckdaten
+                if (event.isSeriesEvent) {
+                    return events.filter(e => e.isSeriesEvent && e.day === event.day && e.time === event.time
+                        && e.field === event.field && e.team === event.team && e.type === event.type);
+                }
+                return [event];
+            };
+
+            // Löscht eine Menge von Terminen (mit Rückgängig-Hinweis)
+            const doDeleteEvents = (ids, label) => {
+                const previous = events;
+                const idSet = new Set(ids);
+                commitEvents(events.filter(e => !idSet.has(e.id)));
+                setEditingEvent(null);
+                setSeriesDeleteTarget(null);
+                addNotification(label || 'Termin gelöscht', 'info', {
+                    duration: 7000,
+                    action: {
+                        label: 'Rückgängig',
+                        onClick: () => { commitEvents(previous); addNotification('Wiederhergestellt', 'success'); }
+                    }
+                });
+            };
+
             const deleteEvent = (id) => {
                 if (!requireEditor()) return;
-                askConfirm('Diesen Termin wirklich löschen?', () => {
-                    const previous = events;
-                    commitEvents(events.filter(e => e.id !== id));
-                    setEditingEvent(null); // Modal schließen
-                    addNotification('Termin gelöscht', 'info', {
-                        duration: 7000,
-                        action: {
-                            label: 'Rückgängig',
-                            onClick: () => { commitEvents(previous); addNotification('Termin wiederhergestellt', 'success'); }
-                        }
-                    });
-                });
+                const event = events.find(e => e.id === id);
+                if (!event) return;
+                // Serienelement: Admin bekommt die Wahl, die ganze Serie zu löschen
+                if (isAdmin && getSeriesSiblings(event).length > 1) {
+                    setEditingEvent(null);
+                    setSeriesDeleteTarget(event);
+                    return;
+                }
+                askConfirm('Diesen Termin wirklich löschen?', () => doDeleteEvents([id], 'Termin gelöscht'));
             };
 
             const addClosure = () => {
@@ -2405,6 +2433,31 @@
                                             <button onClick={() => { setEventActionTarget(null); removeOwnEvent(ev); }} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Endgültig löschen</button>
                                         </div>
                                         <p className="text-xs text-gray-500 pt-1">Andere Änderungen (Zeit, Platz, Spielverlegung) bitte über „Anträge" einreichen.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Modal: Serientermin löschen (Admin) */}
+                    {seriesDeleteTarget && (() => {
+                        const ev = seriesDeleteTarget;
+                        const siblings = getSeriesSiblings(ev);
+                        return (
+                            <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setSeriesDeleteTarget(null); }}>
+                                <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full max-w-sm">
+                                    <div className="flex items-center justify-between p-4 border-b">
+                                        <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="repeat" className="w-5 h-5" /> Serientermin löschen</h2>
+                                        <button onClick={() => setSeriesDeleteTarget(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <p className="text-sm text-gray-600">Dieser Termin (<span className="font-semibold">{ev.team}</span>, {ev.day} {ev.time} Uhr) gehört zu einer Serie mit insgesamt {siblings.length} Terminen.</p>
+                                        <p className="text-sm text-gray-600">Was möchtest du löschen?</p>
+                                        <div className="flex flex-col gap-2">
+                                            <button onClick={() => doDeleteEvents([ev.id], 'Termin gelöscht')} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Nur diesen Termin</button>
+                                            <button onClick={() => doDeleteEvents(siblings.map(e => e.id), `Serie gelöscht (${siblings.length} Termine)`)} className="bg-red-700 hover:bg-red-800 text-white py-2 px-3 rounded-md text-sm">Ganze Serie löschen ({siblings.length} Termine)</button>
+                                            <button onClick={() => setSeriesDeleteTarget(null)} className="bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm">Abbrechen</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
