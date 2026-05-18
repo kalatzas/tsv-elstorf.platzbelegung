@@ -15,6 +15,8 @@ Trainings- und Spielzeiten, nutzbar auf Handy und Desktop.
 - **Trainer** können eigene Trainingseinheiten absagen („fällt aus") oder löschen
 - **Antrags-Workflow**: Trainer beantragen Training, Trainingslager, Turnier,
   Freundschaftsspiel oder Spielverlegung — der Admin genehmigt oder lehnt ab
+- **Benachrichtigungen** mit Glocken-Postfach (neue Anträge, Entscheidungen,
+  abgesagte Einheiten) — optional auch als Browser-Hinweis
 - **Installierbar als App (PWA)** auf Handy-Homescreen und Desktop
 
 ## Bedienung
@@ -130,6 +132,12 @@ service cloud.firestore {
         || (signedIn() && resource.data.requestedBy == request.auth.uid
             && resource.data.status == 'pending');
     }
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.recipientUid == request.auth.uid;
+      allow create: if signedIn();
+      allow update, delete: if signedIn()
+        && resource.data.recipientUid == request.auth.uid;
+    }
   }
 }
 ```
@@ -141,7 +149,9 @@ Anträge dürfen alle angemeldeten Nutzer stellen; entscheiden (genehmigen/
 ablehnen) kann nur ein Admin. Benutzerprofile sind für angemeldete
 Nutzer lesbar und nur von Admins veränderbar; die Sonderbedingung
 erlaubt einmalig dem Bootstrap-Admin, sein Profil beim ersten Login
-anzulegen.
+anzulegen. Benachrichtigungen kann jeder angemeldete Nutzer für andere
+erstellen; lesen, als gelesen markieren und löschen kann sie nur der
+jeweilige Empfänger.
 
 ## Als App installieren (PWA)
 

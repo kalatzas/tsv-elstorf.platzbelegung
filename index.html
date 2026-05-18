@@ -47,6 +47,8 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
+        // Zeitpunkt des Seitenaufrufs – für Browser-Hinweise nur bei neuen Benachrichtigungen
+        const APP_OPENED_AT = Date.now();
 
         // ============================================================
         //  FIREBASE-KONFIGURATION
@@ -103,6 +105,7 @@
             mapPin: <g><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></g>,
             door: <g><path d="M18 20V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14"/><path d="M2 20h20"/><path d="M14 12v.01"/></g>,
             user: <g><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g>,
+            bell: <g><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8a6 6 0 0 0-12 0c0 4.499-1.411 5.956-2.738 7.326"/></g>,
             clock: <g><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></g>,
             timer: <g><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></g>,
             check: <path d="M20 6 9 17l-5-5"/>,
@@ -136,7 +139,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.11.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.12.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -222,6 +225,8 @@
             const [showTrainerModal, setShowTrainerModal] = useState(false);
             const [newTrainerName, setNewTrainerName] = useState('');
             const [requests, setRequests] = useState([]);
+            const [inbox, setInbox] = useState([]);
+            const [showInbox, setShowInbox] = useState(false);
             const [showMyUnitsModal, setShowMyUnitsModal] = useState(false);
             const [showRequestsModal, setShowRequestsModal] = useState(false);
             const [eventActionTarget, setEventActionTarget] = useState(null);
@@ -598,6 +603,7 @@
                         setShowUserModal(false);
                         setShowMyUnitsModal(false);
                         setShowRequestsModal(false);
+                        setShowInbox(false);
                         setEventActionTarget(null);
                         setConfirmDialog(null);
                         setEditingEvent(null);
@@ -681,6 +687,25 @@
                     (snap) => setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
                     (err) => console.error('Anträge-Snapshot fehlgeschlagen:', err)
                 );
+                return () => unsub();
+            }, [authUser]);
+
+            // Benachrichtigungen des angemeldeten Nutzers laden
+            useEffect(() => {
+                if (!FIREBASE_READY || !authUser) { setInbox([]); return; }
+                const unsub = db.collection('notifications')
+                    .where('recipientUid', '==', authUser.uid)
+                    .onSnapshot((snap) => {
+                        setInbox(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                        // Browser-Hinweis für Benachrichtigungen, die nach dem Öffnen eingingen
+                        snap.docChanges().forEach((ch) => {
+                            const data = ch.doc.data();
+                            if (ch.type === 'added' && !data.read && (data.createdAt || 0) > APP_OPENED_AT
+                                && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                                try { new Notification(data.title || 'Platzbelegungsplaner', { body: data.body || '' }); } catch (e) {}
+                            }
+                        });
+                    }, (err) => console.error('Benachrichtigungen-Snapshot fehlgeschlagen:', err));
                 return () => unsub();
             }, [authUser]);
 
@@ -884,6 +909,48 @@
                     .catch(() => addNotification('Senden fehlgeschlagen', 'warning'));
             };
 
+            // ===== Phase 4: Benachrichtigungen =====
+            const unreadInbox = inbox.filter(n => !n.read);
+            const adminUids = () => allUsers.filter(u => u.role === 'admin' && u.uid !== authUser?.uid).map(u => u.uid);
+            const teamTrainerUids = (team) => allUsers.filter(u => (u.teams || []).includes(team) && u.uid !== authUser?.uid).map(u => u.uid);
+
+            // Benachrichtigungen für eine Liste von Empfängern anlegen
+            const pushNotification = (recipientUids, payload) => {
+                if (!FIREBASE_READY) return;
+                const uids = [...new Set(recipientUids)].filter(Boolean);
+                uids.forEach((uid) => {
+                    db.collection('notifications').add({ recipientUid: uid, read: false, createdAt: Date.now(), ...payload })
+                        .catch((e) => console.error('Benachrichtigung fehlgeschlagen:', e));
+                });
+            };
+
+            const markInboxRead = () => {
+                if (!FIREBASE_READY) return;
+                unreadInbox.forEach((n) => {
+                    db.collection('notifications').doc(n.id).update({ read: true }).catch(() => {});
+                });
+            };
+
+            const clearInbox = () => {
+                if (!FIREBASE_READY || inbox.length === 0) return;
+                askConfirm('Alle Benachrichtigungen löschen?', () => {
+                    inbox.forEach((n) => {
+                        db.collection('notifications').doc(n.id).delete().catch(() => {});
+                    });
+                });
+            };
+
+            const requestBrowserNotifications = () => {
+                if (typeof Notification === 'undefined') {
+                    addNotification('Dieser Browser unterstützt keine Hinweise', 'warning');
+                    return;
+                }
+                Notification.requestPermission().then((perm) => {
+                    if (perm === 'granted') addNotification('Browser-Hinweise aktiviert', 'success');
+                    else addNotification('Browser-Hinweise nicht erlaubt', 'info');
+                });
+            };
+
             // ===== Phase 2: eigene Einheiten absagen / löschen =====
             const cancelEvent = (event) => {
                 if (!isAdmin && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
@@ -892,6 +959,10 @@
                         ? { ...e, cancelled: true, cancelledBy: userProfile?.name || 'Admin', cancelledAt: Date.now() }
                         : e));
                     addNotification('Einheit abgesagt', 'info');
+                    pushNotification(isAdmin ? teamTrainerUids(event.team) : adminUids(), {
+                        type: 'event_cancelled', title: 'Einheit fällt aus',
+                        body: `${event.team} Training am ${event.day}, ${event.time} Uhr fällt aus (${userProfile?.name || 'Admin'}).`
+                    });
                 });
             };
 
@@ -911,6 +982,10 @@
                     const previous = events;
                     commitEvents(events.filter(e => e.id !== event.id));
                     addNotification('Einheit gelöscht', 'info', { duration: 7000, action: { label: 'Rückgängig', onClick: () => { commitEvents(previous); addNotification('Einheit wiederhergestellt', 'success'); } } });
+                    pushNotification(isAdmin ? teamTrainerUids(event.team) : adminUids(), {
+                        type: 'event_deleted', title: 'Einheit gelöscht',
+                        body: `${event.team} Training am ${event.day}, ${event.time} Uhr wurde gelöscht (${userProfile?.name || 'Admin'}).`
+                    });
                 });
             };
 
@@ -948,6 +1023,10 @@
                 try {
                     await db.collection('requests').add(payload);
                     addNotification('Antrag eingereicht', 'success');
+                    pushNotification(adminUids(), {
+                        type: 'request_new', title: 'Neuer Antrag',
+                        body: `${userProfile.name}: ${REQUEST_TYPE_LABELS[f.type] || f.type}`
+                    });
                     setRequestForm(emptyRequestForm);
                 } catch (e) {
                     addNotification('Antrag konnte nicht gesendet werden', 'warning');
@@ -972,6 +1051,8 @@
                         commitEvents(events.map(e => e.id === target.id ? updated : e));
                         finishRequest(req, 'approved');
                         addNotification('Verlegung genehmigt', 'success');
+                        pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
+                            body: `Deine Spielverlegung wurde genehmigt: ${updated.team} jetzt ${updated.day}, ${updated.time} Uhr.` });
                     };
                     const conf = findConflicts(updated).filter(c => c.id !== target.id);
                     const closConf = closuresForEvent(updated);
@@ -983,6 +1064,8 @@
                         commitEvents([...events, newEv]);
                         finishRequest(req, 'approved');
                         addNotification('Antrag genehmigt – Termin angelegt', 'success');
+                        pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
+                            body: `Dein Antrag „${REQUEST_TYPE_LABELS[req.type] || req.type}" wurde genehmigt und der Termin angelegt.` });
                     };
                     const conf = findConflicts(newEv);
                     const closConf = closuresForEvent(newEv);
@@ -995,6 +1078,8 @@
                 if (!isAdmin) return;
                 finishRequest(req, 'rejected', note);
                 addNotification('Antrag abgelehnt', 'info');
+                pushNotification([req.requestedBy], { type: 'request_rejected', title: 'Antrag abgelehnt',
+                    body: `Dein Antrag „${REQUEST_TYPE_LABELS[req.type] || req.type}" wurde abgelehnt.${note && note.trim() ? ' Grund: ' + note.trim() : ''}` });
                 setRejectTarget(null);
                 setRejectNote('');
             };
@@ -1322,6 +1407,9 @@
                                 )}
                                 {FIREBASE_READY && isAdmin && (
                                     <button onClick={() => setShowUserModal(true)} className="flex-1 sm:flex-none bg-slate-700 text-white px-3 py-2 rounded text-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="users" /> <span>Benutzer</span></button>
+                                )}
+                                {FIREBASE_READY && authUser && (
+                                    <button onClick={() => setShowInbox(true)} title="Benachrichtigungen" aria-label="Benachrichtigungen" className="relative flex-none bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="bell" className="w-5 h-5" />{unreadInbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{unreadInbox.length}</span>}</button>
                                 )}
                                 {FIREBASE_READY && (authUser ? (
                                     isMobile ? (
@@ -2427,6 +2515,38 @@
                                 </div>
                                 <div className="flex p-6 border-t bg-gray-50">
                                     <button onClick={() => setShowRequestsModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm">Schließen</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal: Benachrichtigungen */}
+                    {showInbox && (
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowInbox(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-between items-center p-6 border-b">
+                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="bell" className="w-5 h-5" /> Benachrichtigungen{unreadInbox.length > 0 && <span className="bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">{unreadInbox.length} neu</span>}</h2>
+                                    <button onClick={() => setShowInbox(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-2">
+                                    {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+                                        <button onClick={requestBrowserNotifications} className="w-full text-sm bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 py-2 px-3 rounded-md">Browser-Hinweise aktivieren</button>
+                                    )}
+                                    {inbox.length === 0 && <p className="text-sm text-gray-500">Keine Benachrichtigungen.</p>}
+                                    {inbox.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map(n => (
+                                        <div key={n.id} className={`border rounded-md p-3 ${n.read ? 'bg-white' : 'bg-blue-50 border-blue-200'}`}>
+                                            <div className="flex items-start justify-between gap-2">
+                                                <span className="text-sm font-semibold text-gray-800">{n.title}</span>
+                                                {!n.read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5"></span>}
+                                            </div>
+                                            <div className="text-sm text-gray-600 mt-0.5">{n.body}</div>
+                                            <div className="text-xs text-gray-400 mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2 p-6 border-t bg-gray-50">
+                                    <button onClick={markInboxRead} disabled={unreadInbox.length === 0} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white py-2 px-3 rounded-md text-sm">Alle gelesen</button>
+                                    <button onClick={clearInbox} disabled={inbox.length === 0} className="bg-gray-300 hover:bg-gray-400 disabled:opacity-40 py-2 px-3 rounded-md text-sm">Liste leeren</button>
                                 </div>
                             </div>
                         </div>
