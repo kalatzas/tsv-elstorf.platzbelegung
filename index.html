@@ -147,7 +147,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.18.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.19.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -245,12 +245,14 @@
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
             const [rejectTarget, setRejectTarget] = useState(null);
             const [rejectNote, setRejectNote] = useState('');
-            const emptyRequestForm = { type: 'training', team: '', field: '', day: '', time: '', duration: 1.5, title: '', cabin: [], note: '', targetEventId: '', proposedDay: '', proposedTime: '', proposedField: '' };
+            const emptyRequestForm = { type: 'friendly', team: '', field: '', date: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
             const [requestForm, setRequestForm] = useState(emptyRequestForm);
+            const [requestReviewTarget, setRequestReviewTarget] = useState(null);
+            const [reviewForm, setReviewForm] = useState({ field: '', cabin: [] });
 
-            // Gefilterte Events
+            // Gefilterte Events (inkl. offener Anträge)
             const getFilteredEvents = () => {
-                return events.filter(event => {
+                return [...events, ...requestDisplayEvents].filter(event => {
                     // Prüfe ob Event in der aktuellen Woche liegt
                     if (event.weekOffset !== undefined) {
                         // Für Serientermine: Prüfe ob sie in der aktuellen Woche liegen
@@ -266,7 +268,7 @@
 
             // Termine eines bestimmten Wochentags in einer bestimmten Woche
             const getEventsForDay = (dayName, weekOffset) => {
-                return events.filter(event => {
+                return [...events, ...requestDisplayEvents].filter(event => {
                     if (event.day !== dayName) return false;
                     if (event.weekOffset !== undefined && event.weekOffset !== weekOffset) return false;
                     if (filters.field && event.field !== filters.field) return false;
@@ -340,6 +342,50 @@
                     return { day, date: date.getDate(), month: date.getMonth() + 1, isToday, iso: toISODate(date) };
                 });
             };
+
+            // ISO-Datum -> Wochentag-Name
+            const dateToWeekday = (iso) => {
+                if (!iso) return '';
+                const d = new Date(iso + 'T00:00:00');
+                return weekdays[(d.getDay() + 6) % 7];
+            };
+
+            // ISO-Datum -> Wochen-Versatz relativ zur aktuellen Woche
+            const dateToWeekOffset = (iso) => {
+                if (!iso) return undefined;
+                const d = new Date(iso + 'T00:00:00');
+                const dow = (d.getDay() + 6) % 7;
+                const dMonday = new Date(d);
+                dMonday.setDate(d.getDate() - dow);
+                dMonday.setHours(0, 0, 0, 0);
+                const thisMonday = getWeekStart(0);
+                thisMonday.setHours(0, 0, 0, 0);
+                return Math.round((dMonday - thisMonday) / (7 * 86400000));
+            };
+
+            // Offene Anträge als termin-ähnliche Objekte für die Plan-Anzeige
+            const requestDisplayEvents = requests.filter(r => r.status === 'pending').map(r => {
+                if (r.kind === 'reschedule') {
+                    const target = events.find(e => String(e.id) === String(r.targetEventId)) || {};
+                    const p = r.proposed || {};
+                    return {
+                        id: 'req-' + r.id, isRequest: true, requestId: r.id, requestKind: 'reschedule', requestType: r.type,
+                        type: target.type || 'match', team: target.team || '?', title: target.title || '',
+                        field: p.field || target.field || '', time: p.time || '', duration: target.duration || 1.5,
+                        day: dateToWeekday(p.date), weekOffset: dateToWeekOffset(p.date), eventDate: p.date || '',
+                        cabin: target.cabin || [], trainer: target.trainer || '', position: target.position || ''
+                    };
+                }
+                const ev = r.event || {};
+                const iso = ev.date || ev.eventDate || '';
+                return {
+                    ...ev,
+                    id: 'req-' + r.id, isRequest: true, requestId: r.id, requestKind: 'new', requestType: r.type,
+                    day: iso ? dateToWeekday(iso) : ev.day,
+                    weekOffset: iso ? dateToWeekOffset(iso) : ev.weekOffset,
+                    eventDate: iso
+                };
+            });
 
             // Platzsperren, die ein bestimmtes Datum abdecken (optional auf einen Platz gefiltert)
             const closuresOnDate = (iso, fieldId) => {
@@ -458,8 +504,15 @@
                 setHoveredEvent(null);
             };
 
-            // Klick auf einen Termin: Admin bearbeitet, Trainer sieht Aktionen für eigene Einheiten
+            // Klick auf einen Termin: Admin bearbeitet, Trainer sieht Aktionen für eigene Einheiten,
+            // beantragte Termine öffnen für Admins die Antragsprüfung
             const handleEventClick = (event) => {
+                if (event && event.isRequest) {
+                    if (!isAdmin) return;
+                    const r = requests.find(x => x.id === event.requestId);
+                    if (r) openReview(r);
+                    return;
+                }
                 if (isAdmin) { setEditingEvent({...event}); return; }
                 if (ownsEvent(event)) { setEventActionTarget(event); }
             };
@@ -471,10 +524,11 @@
                 const field = fields.find(f => f.id === event.field);
                 const isBlocked = event.type === 'blocked';
                 const isCancelled = !!event.cancelled;
+                const isReq = !!event.isRequest;
                 return (
                     <div
                         key={event.id}
-                        className={`bg-white border border-gray-200 rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow flex overflow-hidden ${isCancelled ? 'opacity-60' : ''}`}
+                        className={`bg-white rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow flex overflow-hidden ${isCancelled ? 'opacity-60' : ''} ${isReq ? 'border-2 border-dashed border-amber-400' : 'border border-gray-200'}`}
                         onClick={() => handleEventClick(event)}
                         onMouseEnter={(e) => handleEventHover(event, e)}
                         onMouseLeave={handleEventLeave}
@@ -493,9 +547,12 @@
                                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: isBlocked ? '#6b7280' : (teamColors[event.team] || '#9ca3af') }}></span>
                                     <span className={`text-sm font-bold text-gray-900 truncate leading-tight ${isCancelled ? 'line-through' : ''}`}>{isBlocked ? 'Sperre' : event.team}</span>
                                 </div>
-                                {isCancelled
-                                    ? <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap shrink-0" style={{ fontSize: '10px' }}>fällt aus</span>
-                                    : <span className={`${eventType.pill} px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap shrink-0`} style={{ fontSize: '10px' }}>{eventType.label}</span>}
+                                <div className="flex items-center gap-1 shrink-0">
+                                    {isReq && <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ fontSize: '10px' }}>Antrag</span>}
+                                    {isCancelled
+                                        ? <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ fontSize: '10px' }}>fällt aus</span>
+                                        : <span className={`${eventType.pill} px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap`} style={{ fontSize: '10px' }}>{eventType.label}</span>}
+                                </div>
                             </div>
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-1 text-gray-700"><Icon name="clock" className="w-3 h-3" /> {event.time} – {getEventEndTime(event)}</div>
@@ -619,6 +676,7 @@
                         setShowInbox(false);
                         setEventActionTarget(null);
                         setSeriesDeleteTarget(null);
+                        setRequestReviewTarget(null);
                         setConfirmDialog(null);
                         setEditingEvent(null);
                     }
@@ -881,7 +939,7 @@
             const canEdit = isAdmin;
 
             const ROLE_LABELS = { admin: 'Admin', trainer: 'Trainer', cotrainer: 'Co-Trainer' };
-            const REQUEST_TYPE_LABELS = { training: 'Zusätzliches Training', camp: 'Trainingslager', tournament: 'Turnier', friendly: 'Freundschaftsspiel', reschedule: 'Spielverlegung' };
+            const REQUEST_TYPE_LABELS = { friendly: 'Freundschaftsspiel', reschedule: 'Spielverlegung', training: 'Zusätzliches Training', tournament: 'Turnier / Leistungsvergleich', camp: 'Trainingslager' };
             const REQUEST_EVENT_TYPE = { training: 'training', camp: 'camp', tournament: 'tournament', friendly: 'friendly' };
 
             // Trainer oder Co-Trainer (gleiche Rechte)
@@ -1113,21 +1171,29 @@
                 };
                 let payload;
                 if (f.type === 'reschedule') {
-                    if (!f.targetEventId || !f.proposedDay || !f.proposedTime) {
-                        addNotification('Bitte Spiel, neuen Tag und neue Zeit angeben.', 'warning');
+                    if (!f.targetEventId || !f.proposedDate || !f.proposedTime) {
+                        addNotification('Bitte Spiel, neues Datum und neue Zeit angeben.', 'warning');
+                        return;
+                    }
+                    if (!f.note.trim()) {
+                        addNotification('Bei einer Spielverlegung ist eine Begründung verpflichtend.', 'warning');
                         return;
                     }
                     payload = { ...base, kind: 'reschedule', targetEventId: f.targetEventId,
-                        proposed: { day: f.proposedDay, time: f.proposedTime, field: f.proposedField || '' } };
+                        proposed: { date: f.proposedDate, time: f.proposedTime, field: f.proposedField || '' } };
                 } else {
-                    if (!f.team || !f.field || !f.day || !f.time) {
-                        addNotification('Bitte Team, Platz, Tag und Zeit angeben.', 'warning');
+                    // Team ergibt sich aus dem Profil; bei mehreren Teams ist es im Formular gewählt
+                    const team = myTeams.length === 1 ? myTeams[0] : f.team;
+                    if (!team) { addNotification('Bitte ein Team auswählen.', 'warning'); return; }
+                    if (!f.date || !f.time) {
+                        addNotification('Bitte Datum und Uhrzeit angeben.', 'warning');
                         return;
                     }
                     payload = { ...base, kind: 'new', event: {
-                        type: REQUEST_EVENT_TYPE[f.type], team: f.team, field: f.field, day: f.day,
+                        type: REQUEST_EVENT_TYPE[f.type], team, field: f.field || '',
+                        date: f.date, day: dateToWeekday(f.date),
                         time: f.time, duration: f.duration || 1.5, title: f.title.trim(),
-                        cabin: f.cabin, trainer: userProfile.name, position: ''
+                        cabin: [], trainer: userProfile.name, position: ''
                     } };
                 }
                 try {
@@ -1150,29 +1216,58 @@
                 }).catch(() => addNotification('Antrag konnte nicht aktualisiert werden', 'warning'));
             };
 
-            const approveRequest = (req) => {
-                if (!isAdmin) return;
+            // Antragsprüfung öffnen: Platz/Kabinen vorbelegen, dann Dialog anzeigen
+            const openReview = (req) => {
+                if (!isAdmin || !req) return;
+                let field = '', cabin = [];
+                if (req.kind === 'reschedule') {
+                    const target = events.find(e => String(e.id) === String(req.targetEventId));
+                    field = (req.proposed && req.proposed.field) || (target && target.field) || '';
+                    cabin = (target && Array.isArray(target.cabin)) ? target.cabin : [];
+                } else {
+                    field = (req.event && req.event.field) || '';
+                    cabin = (req.event && Array.isArray(req.event.cabin)) ? req.event.cabin : [];
+                }
+                setReviewForm({ field, cabin });
+                setRequestReviewTarget(req);
+                setRejectTarget(null);
+                setRejectNote('');
+            };
+
+            // Antrag genehmigen – mit vom Admin gewähltem Platz und Kabinen
+            const confirmApproveRequest = (req, field, cabin) => {
+                if (!isAdmin || !req) return;
                 if (req.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(req.targetEventId));
                     if (!target) { addNotification('Das betroffene Spiel wurde nicht gefunden.', 'warning'); return; }
-                    const updated = { ...target, day: req.proposed.day, time: req.proposed.time,
-                        field: req.proposed.field || target.field };
+                    const p = req.proposed || {};
+                    const updated = { ...target, field: field || target.field, cabin,
+                        day: dateToWeekday(p.date) || target.day, time: p.time || target.time,
+                        weekOffset: dateToWeekOffset(p.date), eventDate: p.date || '' };
                     const doIt = () => {
                         commitEvents(events.map(e => e.id === target.id ? updated : e));
                         finishRequest(req, 'approved');
+                        setRequestReviewTarget(null);
                         addNotification('Verlegung genehmigt', 'success');
                         pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
-                            body: `Deine Spielverlegung wurde genehmigt: ${updated.team} jetzt ${updated.day}, ${updated.time} Uhr.` });
+                            body: `Deine Spielverlegung wurde genehmigt: ${updated.team} jetzt ${formatISODate(p.date)} ${updated.time} Uhr.` });
                     };
                     const conf = findConflicts(updated).filter(c => c.id !== target.id);
                     const closConf = closuresForEvent(updated);
                     if (conf.length > 0 || closConf.length > 0) { askConfirm(conflictMessage(conf, closConf, updated), doIt); }
                     else doIt();
                 } else {
-                    const newEv = { ...req.event, id: Date.now() };
+                    const ev = req.event || {};
+                    const iso = ev.date || ev.eventDate || '';
+                    const newEv = { ...ev, field: field || ev.field || '', cabin, id: Date.now(),
+                        day: iso ? dateToWeekday(iso) : ev.day,
+                        weekOffset: iso ? dateToWeekOffset(iso) : undefined,
+                        eventDate: iso };
+                    delete newEv.date;
                     const doIt = () => {
                         commitEvents([...events, newEv]);
                         finishRequest(req, 'approved');
+                        setRequestReviewTarget(null);
                         addNotification('Antrag genehmigt – Termin angelegt', 'success');
                         pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
                             body: `Dein Antrag „${REQUEST_TYPE_LABELS[req.type] || req.type}" wurde genehmigt und der Termin angelegt.` });
@@ -1192,6 +1287,7 @@
                     body: `Dein Antrag „${REQUEST_TYPE_LABELS[req.type] || req.type}" wurde abgelehnt.${note && note.trim() ? ' Grund: ' + note.trim() : ''}` });
                 setRejectTarget(null);
                 setRejectNote('');
+                setRequestReviewTarget(null);
             };
 
             const withdrawRequest = (req) => {
@@ -1762,14 +1858,14 @@
                                         return (
                                             <div
                                                 key={eventPos.id}
-                                                className={`${field?.color} border rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
-                                                style={{ 
+                                                className={`${field?.color} ${eventPos.isRequest ? 'border-2 border-dashed border-amber-400' : 'border'} ${eventPos.cancelled ? 'opacity-60' : ''} rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
+                                                style={{
                                                     top: `${topPos}px`,
                                                     left: `${eventLeft}px`,
                                                     width: `${eventWidth}px`,
                                                     height: `${height}px`
                                                 }}
-                                                onClick={() => setEditingEvent({...eventPos})}
+                                                onClick={() => handleEventClick(eventPos)}
                                                 onMouseEnter={(e) => handleEventHover(eventPos, e)}
                                                 onMouseLeave={handleEventLeave}
                                                 onMouseMove={(e) => {
@@ -1782,9 +1878,11 @@
                                                 <div className={`${eventType.color} text-white text-xs px-1 py-1 rounded-t font-medium flex items-center justify-between`}>
                                                     <div className="flex items-center gap-1 truncate">
                                                         <Icon name={eventType.icon} className="w-3 h-3" />
-                                                        {!isCompact && <span className="truncate">{eventType.label}</span>}
+                                                        {!isCompact && <span className="truncate">{eventPos.isRequest ? 'Antrag · ' + eventType.label : eventType.label}</span>}
                                                     </div>
-                                                    {positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>}
+                                                    {eventPos.isRequest
+                                                        ? <span className="bg-amber-300 text-amber-900 font-bold px-1 rounded" style={{ fontSize: '9px' }}>ANTRAG</span>
+                                                        : (positionIndicator && <span className="text-white font-bold">{positionIndicator}</span>)}
                                                 </div>
                                                 
                                                 {/* Event Content */}
@@ -1978,7 +2076,7 @@
                                                                     return (
                                                                         <div
                                                                             key={event.id}
-                                                                            className={`absolute ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden ${event.cancelled ? 'opacity-50' : ''}`}
+                                                                            className={`absolute ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden ${event.cancelled ? 'opacity-50' : ''} ${event.isRequest ? 'ring-2 ring-amber-400 ring-inset' : ''}`}
                                                                             style={{
                                                                                 top: '2px',
                                                                                 left: '2px',
@@ -1995,6 +2093,7 @@
                                                                                     {!isBlocker && <span className={`font-bold truncate ${event.cancelled ? 'line-through' : ''}`}>{event.team}</span>}
                                                                                     {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
                                                                                 </div>
+                                                                                {event.isRequest && <div className="text-xs font-semibold bg-amber-300 text-amber-900 rounded px-1 self-start">Antrag</div>}
                                                                                 {event.cancelled && <div className="text-xs font-semibold">fällt aus</div>}
                                                                                 {event.duration > 0.5 && !isBlocker && event.trainer && (
                                                                                     <div className="truncate text-xs opacity-90">
@@ -2585,14 +2684,11 @@
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <div>
-                                                            <label className="block text-sm font-medium mb-1">Neuer Tag *</label>
-                                                            <select value={requestForm.proposedDay} onChange={(e) => setRequestForm({...requestForm, proposedDay: e.target.value})} className="w-full border rounded-md p-2 text-sm">
-                                                                <option value="">–</option>
-                                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                                            </select>
+                                                            <label className="block text-sm font-medium mb-1">Neues Datum *</label>
+                                                            <input type="date" value={requestForm.proposedDate} onChange={(e) => setRequestForm({...requestForm, proposedDate: e.target.value})} className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
                                                         <div>
-                                                            <label className="block text-sm font-medium mb-1">Neue Zeit *</label>
+                                                            <label className="block text-sm font-medium mb-1">Neue Uhrzeit *</label>
                                                             <select value={requestForm.proposedTime} onChange={(e) => setRequestForm({...requestForm, proposedTime: e.target.value})} className="w-full border rounded-md p-2 text-sm">
                                                                 <option value="">–</option>
                                                                 {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
@@ -2609,7 +2705,7 @@
                                                 </>
                                             ) : (
                                                 <>
-                                                    <div className="grid grid-cols-2 gap-2">
+                                                    {myTeams.length > 1 && (
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Team *</label>
                                                             <select value={requestForm.team} onChange={(e) => setRequestForm({...requestForm, team: e.target.value})} className="w-full border rounded-md p-2 text-sm">
@@ -2617,24 +2713,17 @@
                                                                 {myTeams.map(t => <option key={t} value={t}>{t}</option>)}
                                                             </select>
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium mb-1">Platz *</label>
-                                                            <select value={requestForm.field} onChange={(e) => setRequestForm({...requestForm, field: e.target.value})} className="w-full border rounded-md p-2 text-sm">
-                                                                <option value="">–</option>
-                                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                                            </select>
-                                                        </div>
-                                                    </div>
+                                                    )}
+                                                    {myTeams.length === 1 && (
+                                                        <p className="text-xs text-gray-500">Team: <span className="font-medium">{myTeams[0]}</span></p>
+                                                    )}
                                                     <div className="grid grid-cols-3 gap-2">
                                                         <div>
-                                                            <label className="block text-sm font-medium mb-1">Tag *</label>
-                                                            <select value={requestForm.day} onChange={(e) => setRequestForm({...requestForm, day: e.target.value})} className="w-full border rounded-md p-2 text-sm">
-                                                                <option value="">–</option>
-                                                                {weekdays.map(d => <option key={d} value={d}>{d}</option>)}
-                                                            </select>
+                                                            <label className="block text-sm font-medium mb-1">Datum *</label>
+                                                            <input type="date" value={requestForm.date} onChange={(e) => setRequestForm({...requestForm, date: e.target.value})} className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
                                                         <div>
-                                                            <label className="block text-sm font-medium mb-1">Zeit *</label>
+                                                            <label className="block text-sm font-medium mb-1">Uhrzeit *</label>
                                                             <select value={requestForm.time} onChange={(e) => setRequestForm({...requestForm, time: e.target.value})} className="w-full border rounded-md p-2 text-sm">
                                                                 <option value="">–</option>
                                                                 {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
@@ -2645,6 +2734,13 @@
                                                             <input type="number" step="0.5" min="0.5" max="6" value={requestForm.duration} onChange={(e) => setRequestForm({...requestForm, duration: parseFloat(e.target.value) || 1.5})} className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
                                                     </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium mb-1">Platz (Wunsch)</label>
+                                                        <select value={requestForm.field} onChange={(e) => setRequestForm({...requestForm, field: e.target.value})} className="w-full border rounded-md p-2 text-sm">
+                                                            <option value="">– offen, vom Admin festzulegen –</option>
+                                                            {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                                        </select>
+                                                    </div>
                                                     {requestForm.type !== 'training' && (
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">{requestForm.type === 'friendly' ? 'Gegner' : 'Bezeichnung'}</label>
@@ -2654,8 +2750,8 @@
                                                 </>
                                             )}
                                             <div>
-                                                <label className="block text-sm font-medium mb-1">Anmerkung / Begründung</label>
-                                                <textarea value={requestForm.note} onChange={(e) => setRequestForm({...requestForm, note: e.target.value})} rows="2" className="w-full border rounded-md p-2 text-sm" placeholder="optional" />
+                                                <label className="block text-sm font-medium mb-1">{requestForm.type === 'reschedule' ? 'Begründung *' : 'Anmerkung (optional)'}</label>
+                                                <textarea value={requestForm.note} onChange={(e) => setRequestForm({...requestForm, note: e.target.value})} rows="2" className="w-full border rounded-md p-2 text-sm" placeholder={requestForm.type === 'reschedule' ? 'Warum soll das Spiel verlegt werden?' : 'optional'} />
                                             </div>
                                             <button onClick={submitRequest} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-3 rounded-md text-sm">Antrag einreichen</button>
                                         </div>
@@ -2679,8 +2775,8 @@
                                                         </div>
                                                         <div className="text-xs text-gray-600 mt-0.5">
                                                             {r.kind === 'reschedule'
-                                                                ? <>{target ? `${target.team} ${eventTypes[target.type].label}` : 'Spiel'} → {r.proposed.day} {r.proposed.time}{r.proposed.field ? ` · ${fld?.name}` : ''}</>
-                                                                : <>{r.event.team} · {r.event.day} {r.event.time} · {fields.find(f => f.id === r.event.field)?.name}{r.event.title ? ` · ${r.event.title}` : ''}</>}
+                                                                ? <>{target ? `${target.team} ${eventTypes[target.type].label}` : 'Spiel'} → {formatISODate(r.proposed?.date)} {r.proposed?.time}{r.proposed?.field ? ` · ${fld?.name}` : ''}</>
+                                                                : <>{r.event.team} · {formatISODate(r.event.date || r.event.eventDate)} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}</>}
                                                         </div>
                                                         <div className="text-xs text-gray-400 mt-0.5">von {r.requestedByName}</div>
                                                         {r.note && <div className="text-xs text-gray-600 mt-1 italic">„{r.note}"</div>}
@@ -2696,7 +2792,7 @@
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex gap-1.5 mt-2">
-                                                                    <button onClick={() => approveRequest(r)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">Genehmigen</button>
+                                                                    <button onClick={() => { setShowRequestsModal(false); openReview(r); }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">Prüfen / Genehmigen</button>
                                                                     <button onClick={() => { setRejectTarget(r.id); setRejectNote(''); }} className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">Ablehnen</button>
                                                                 </div>
                                                             )
@@ -2716,6 +2812,76 @@
                             </div>
                         </div>
                     )}
+
+                    {/* Modal: Antrag prüfen (Admin) */}
+                    {requestReviewTarget && (() => {
+                        const r = requestReviewTarget;
+                        const target = r.kind === 'reschedule' ? events.find(e => String(e.id) === String(r.targetEventId)) : null;
+                        const ev = r.event || {};
+                        const dateIso = r.kind === 'reschedule' ? (r.proposed && r.proposed.date) : (ev.date || ev.eventDate);
+                        const time = r.kind === 'reschedule' ? (r.proposed && r.proposed.time) : ev.time;
+                        const teamName = r.kind === 'reschedule' ? (target && target.team) : ev.team;
+                        return (
+                            <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setRequestReviewTarget(null); }}>
+                                <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center p-5 border-b">
+                                        <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="repeat" className="w-5 h-5" /> Antrag prüfen</h2>
+                                        <button onClick={() => setRequestReviewTarget(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                                        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-1 text-sm">
+                                            <div className="font-semibold">{REQUEST_TYPE_LABELS[r.type] || r.type}</div>
+                                            <div className="text-gray-700">{teamName || '?'} · {formatISODate(dateIso)} {time} Uhr</div>
+                                            {r.kind === 'reschedule' && target && <div className="text-gray-600 text-xs">Bisher: {target.day} {target.time} Uhr{target.field ? ` · ${fields.find(f => f.id === target.field)?.name}` : ''}</div>}
+                                            {ev.title && <div className="text-gray-600 text-xs">{ev.title}</div>}
+                                            <div className="text-gray-500 text-xs">Antragsteller: {r.requestedByName}</div>
+                                            {r.note && <div className="text-gray-700 text-xs italic">„{r.note}"</div>}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Platz {r.kind === 'reschedule' ? '' : '*'}</label>
+                                            <select value={reviewForm.field} onChange={(e) => setReviewForm({...reviewForm, field: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                                <option value="">– bitte wählen –</option>
+                                                {fields.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Kabinen zuweisen</label>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                {cabins.map(c => {
+                                                    const checked = (reviewForm.cabin || []).includes(c);
+                                                    return (
+                                                        <label key={c} className={`flex items-center gap-1.5 text-sm border rounded-md p-1.5 cursor-pointer ${checked ? 'bg-green-50 border-green-400' : ''}`}>
+                                                            <input type="checkbox" checked={checked} onChange={(e) => setReviewForm({...reviewForm, cabin: e.target.checked ? [...(reviewForm.cabin || []), c] : (reviewForm.cabin || []).filter(x => x !== c)})} className="w-4 h-4 accent-green-600" />
+                                                            {c}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        {rejectTarget === r.id && (
+                                            <div className="space-y-1.5">
+                                                <label className="block text-sm font-medium">Grund der Ablehnung (optional)</label>
+                                                <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} rows="2" className="w-full border rounded p-2 text-sm" placeholder="Grund" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2 p-5 border-t bg-gray-50">
+                                        {rejectTarget === r.id ? (
+                                            <>
+                                                <button onClick={() => rejectRequest(r, rejectNote)} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Ablehnen bestätigen</button>
+                                                <button onClick={() => { setRejectTarget(null); setRejectNote(''); }} className="bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm">Zurück</button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => { if (!reviewForm.field) { addNotification('Bitte einen Platz auswählen.', 'warning'); return; } confirmApproveRequest(r, reviewForm.field, reviewForm.cabin); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-md text-sm">Genehmigen</button>
+                                                <button onClick={() => { setRejectTarget(r.id); setRejectNote(''); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Ablehnen</button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Modal: Benachrichtigungen */}
                     {showInbox && (
