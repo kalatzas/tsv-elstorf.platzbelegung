@@ -209,7 +209,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.39.4'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.39.5'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1896,8 +1896,8 @@
                 setShowAway(true);
             };
 
-            // In der Mobil-Ansicht werden die Aktions-Buttons über die volle Breite gestreckt
-            const tbBtn = isMobile ? 'flex-1' : 'flex-1 sm:flex-none';
+            // In der Mobil-Ansicht dehnen sich Filter und Anträge, damit die Leiste bündig abschließt
+            const tbBtn = isMobile ? 'flex-1' : 'flex-none';
 
             const hasActiveFilters = () => {
                 return filters.field || filters.type || filters.team || !showAway;
@@ -1988,16 +1988,16 @@
                             <div className={`flex gap-2 flex-wrap w-full ${isMobile ? '' : 'sm:w-auto'}`}>
                                 <button onClick={() => setShowFilters(s => !s)} className={`${tbBtn} px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${hasActiveFilters() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="filter" /> <span>Filter{hasActiveFilters() ? ' •' : ''}</span></button>
                                 {!isMobile && (
-                                    <button onClick={() => setShowExportModal(true)} className={`${tbBtn} bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5`}><Icon name="download" /> <span>Export</span></button>
+                                    <button onClick={() => setShowExportModal(true)} className="flex-none bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="download" /> <span>Export</span></button>
                                 )}
                                 {canEdit && (
-                                    <button onClick={() => openAddModal()} className={`${tbBtn} bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5`}><Icon name="plus" /> <span>Termin</span></button>
+                                    <button onClick={() => openAddModal()} className="flex-none bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="plus" /> <span>Termin</span></button>
                                 )}
                                 {canEdit && (
-                                    <button onClick={() => setShowClosureModal(true)} className={`${tbBtn} bg-amber-600 text-white px-3 py-2 rounded text-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5`}><Icon name="ban" /> <span>Sperre</span></button>
+                                    <button onClick={() => setShowClosureModal(true)} className="flex-none bg-amber-600 text-white px-3 py-2 rounded text-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="ban" /> <span>Sperre</span></button>
                                 )}
                                 {FIREBASE_READY && isTrainerLike && (
-                                    <button onClick={() => setMyUnitsOnly(s => !s)} className={`${tbBtn} px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${myUnitsOnly ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="activity" /> <span>Meine Einheiten{myUnitsOnly ? ' •' : ''}</span></button>
+                                    <button onClick={() => setMyUnitsOnly(s => !s)} className={`flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${myUnitsOnly ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="activity" /> <span>Meine Einheiten{myUnitsOnly ? ' •' : ''}</span></button>
                                 )}
                                 {FIREBASE_READY && (isAdmin || isApprover || isTrainerLike) && (
                                     <button onClick={() => setShowRequestsModal(true)} className={`relative ${tbBtn} bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5`}><Icon name="repeat" /> <span>Anträge</span>{canManageRequests && pendingRequests.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{pendingRequests.length}</span>}</button>
