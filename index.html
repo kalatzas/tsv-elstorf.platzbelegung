@@ -133,7 +133,8 @@
             history: <g><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></g>,
             ban: <g><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></g>,
             smartphone: <g><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></g>,
-            monitor: <g><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></g>
+            monitor: <g><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></g>,
+            settings: <g><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g>
         };
 
         const Icon = ({ name, className = 'w-4 h-4', spin = false }) => {
@@ -204,7 +205,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.37.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.38.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -212,8 +213,8 @@
             const [authUser, setAuthUser] = useState(null);
             const [allUsers, setAllUsers] = useState([]);
             const [showLoginModal, setShowLoginModal] = useState(false);
-            const [showUserModal, setShowUserModal] = useState(false);
-            const [showStammdatenModal, setShowStammdatenModal] = useState(false);
+            const [showManagement, setShowManagement] = useState(false);
+            const [managementTab, setManagementTab] = useState('users');
             const emptyUserForm = { uid: '', firstName: '', lastName: '', email: '', password: '', role: 'trainer', teams: [] };
             const [userForm, setUserForm] = useState(emptyUserForm);
             const [loginEmail, setLoginEmail] = useState('');
@@ -322,7 +323,7 @@
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
             const [rejectTarget, setRejectTarget] = useState(null);
             const [rejectNote, setRejectNote] = useState('');
-            const emptyRequestForm = { type: 'friendly', team: '', field: '', date: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
+            const emptyRequestForm = { type: 'friendly', team: '', field: '', date: '', dateEnd: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
             const [requestForm, setRequestForm] = useState(emptyRequestForm);
             const [requestReviewTarget, setRequestReviewTarget] = useState(null);
             const [reviewForm, setReviewForm] = useState({ field: '', cabin: [], position: '' });
@@ -380,7 +381,7 @@
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     // Auswärtsspiele sehen nur Admins und der Trainer des betroffenen Teams
                     if (event.venue === 'away' && GAME_TYPES.includes(event.type)) {
-                        if (!isAdmin && !myTeams.includes(event.team)) return false;
+                        if (!isAdmin && !isApprover && !myTeams.includes(event.team)) return false;
                         if (!showAway) return false;
                     }
                     return true;
@@ -397,7 +398,7 @@
                     if (filters.team && event.team !== filters.team) return false;
                     if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
                     if (event.venue === 'away' && GAME_TYPES.includes(event.type)) {
-                        if (!isAdmin && !myTeams.includes(event.team)) return false;
+                        if (!isAdmin && !isApprover && !myTeams.includes(event.team)) return false;
                         if (!showAway) return false;
                     }
                     return true;
@@ -490,7 +491,7 @@
             };
 
             // Offene Anträge als termin-ähnliche Objekte für die Plan-Anzeige
-            const requestDisplayEvents = requests.filter(r => r.status === 'pending' || r.status === 'dfbnet').map(r => {
+            const requestDisplayEvents = requests.filter(r => r.status === 'pending' || r.status === 'dfbnet').flatMap(r => {
                 if (r.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(r.targetEventId)) || {};
                     const p = r.proposed || {};
@@ -504,6 +505,24 @@
                 }
                 const ev = r.event || {};
                 const iso = ev.date || ev.eventDate || '';
+                // Trainingslager-Antrag: Vorschau an jedem Tag des Zeitraums
+                if (ev.type === 'camp' && ev.dateEnd && ev.dateEnd >= iso) {
+                    const out = [];
+                    const cur = new Date(iso + 'T00:00:00');
+                    const end = new Date(ev.dateEnd + 'T00:00:00');
+                    let i = 0;
+                    while (cur <= end && i < 90) {
+                        const dIso = toISODate(cur);
+                        out.push({
+                            ...ev,
+                            id: 'req-' + r.id + '-' + i, isRequest: true, requestId: r.id, requestKind: 'new', requestType: r.type, requestStatus: r.status,
+                            day: dateToWeekday(dIso), weekOffset: dateToWeekOffset(dIso), eventDate: dIso
+                        });
+                        cur.setDate(cur.getDate() + 1);
+                        i++;
+                    }
+                    return out;
+                }
                 return {
                     ...ev,
                     id: 'req-' + r.id, isRequest: true, requestId: r.id, requestKind: 'new', requestType: r.type, requestStatus: r.status,
@@ -634,12 +653,12 @@
             // beantragte Termine öffnen für Admins die Antragsprüfung
             const handleEventClick = (event) => {
                 if (event && event.isRequest) {
-                    if (!isAdmin) return;
+                    if (!canManageRequests) return;
                     const r = requests.find(x => x.id === event.requestId);
                     if (r) openReview(r);
                     return;
                 }
-                if (isAdmin) { setEditingEvent({ ...event, date: event.date || event.eventDate || '' }); return; }
+                if (canEdit) { setEditingEvent({ ...event, date: event.date || event.eventDate || '' }); return; }
                 if (ownsEvent(event)) { setEventActionTarget(event); }
             };
 
@@ -826,8 +845,7 @@
                         setShowExportModal(false);
                         setShowLoginModal(false);
                         setShowClosureModal(false);
-                        setShowUserModal(false);
-                        setShowStammdatenModal(false);
+                        setShowManagement(false);
                         setShowRequestsModal(false);
                         setShowInbox(false);
                         setEventActionTarget(null);
@@ -1181,11 +1199,15 @@
             const isRealAdmin = userRole === 'admin';
             // Admins können testweise in die Benutzer-Ansicht wechseln
             const isAdmin = isRealAdmin && !viewAsUser;
+            // Bearbeiter (approver): Termine anlegen und Anträge bearbeiten, aber keine Stammdaten
+            const isApprover = userRole === 'approver';
 
-            // Darf der aktuelle Nutzer den vollen Bearbeiten-Modus nutzen? (nur Admins)
-            const canEdit = isAdmin;
+            // Darf der aktuelle Nutzer Termine anlegen/bearbeiten? (Admins und Bearbeiter)
+            const canEdit = isAdmin || isApprover;
+            // Darf Anträge prüfen/genehmigen? (Admins und Bearbeiter)
+            const canManageRequests = isAdmin || isApprover;
 
-            const ROLE_LABELS = { admin: 'Admin', trainer: 'Trainer', cotrainer: 'Co-Trainer' };
+            const ROLE_LABELS = { admin: 'Admin', approver: 'Bearbeiter', trainer: 'Trainer', cotrainer: 'Co-Trainer' };
 
             // Trainer/Co-Trainer – oder ein Admin, der die Benutzer-Ansicht testet
             const isTrainerLike = userRole === 'trainer' || userRole === 'cotrainer' || (isRealAdmin && viewAsUser);
@@ -1334,7 +1356,7 @@
 
             // ===== Phase 4: Benachrichtigungen =====
             const unreadInbox = inbox.filter(n => !n.read);
-            const adminUids = () => allUsers.filter(u => u.role === 'admin' && u.uid !== authUser?.uid).map(u => u.uid);
+            const adminUids = () => allUsers.filter(u => (u.role === 'admin' || u.role === 'approver') && u.uid !== authUser?.uid).map(u => u.uid);
             const teamTrainerUids = (team) => allUsers.filter(u => (u.teams || []).includes(team) && u.uid !== authUser?.uid).map(u => u.uid);
 
             // Benachrichtigungen anlegen. Der E-Mail-Versand passiert
@@ -1378,13 +1400,13 @@
 
             // ===== Phase 2: eigene Einheiten absagen / löschen =====
             const cancelEvent = (event) => {
-                if (!isAdmin && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
+                if (!canEdit && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
                 askConfirm('Diese Einheit absagen? Sie bleibt als „fällt aus" sichtbar, Platz und Kabine werden frei.', () => {
                     commitEvents(events.map(e => e.id === event.id
                         ? { ...e, cancelled: true, cancelledBy: userProfile?.name || 'Admin', cancelledAt: Date.now() }
                         : e));
                     addNotification('Einheit abgesagt', 'info');
-                    pushNotification(isAdmin ? teamTrainerUids(event.team) : adminUids(), {
+                    pushNotification(canEdit ? teamTrainerUids(event.team) : adminUids(), {
                         type: 'event_cancelled', title: 'Einheit fällt aus',
                         body: `${event.team} Training am ${event.day}, ${event.time} Uhr fällt aus (${userProfile?.name || 'Admin'}).`
                     });
@@ -1392,7 +1414,7 @@
             };
 
             const reactivateEvent = (event) => {
-                if (!isAdmin && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
+                if (!canEdit && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
                 commitEvents(events.map(e => {
                     if (e.id !== event.id) return e;
                     const { cancelled, cancelledBy, cancelledAt, ...rest } = e;
@@ -1402,12 +1424,12 @@
             };
 
             const removeOwnEvent = (event) => {
-                if (!isAdmin && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
+                if (!canEdit && !ownsEvent(event)) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
                 askConfirm('Diese Einheit endgültig löschen? Sie verschwindet komplett aus dem Plan.', () => {
                     const previous = events;
                     commitEvents(events.filter(e => e.id !== event.id));
                     addNotification('Einheit gelöscht', 'info', { duration: 7000, action: { label: 'Rückgängig', onClick: () => { commitEvents(previous); addNotification('Einheit wiederhergestellt', 'success'); } } });
-                    pushNotification(isAdmin ? teamTrainerUids(event.team) : adminUids(), {
+                    pushNotification(canEdit ? teamTrainerUids(event.team) : adminUids(), {
                         type: 'event_deleted', title: 'Einheit gelöscht',
                         body: `${event.team} Training am ${event.day}, ${event.time} Uhr wurde gelöscht (${userProfile?.name || 'Admin'}).`
                     });
@@ -1446,9 +1468,14 @@
                         addNotification('Bitte Datum und Uhrzeit angeben.', 'warning');
                         return;
                     }
+                    if (f.type === 'camp') {
+                        if (!f.dateEnd) { addNotification('Bitte ein Bis-Datum für das Trainingslager angeben.', 'warning'); return; }
+                        if (f.dateEnd < f.date) { addNotification('Das Bis-Datum darf nicht vor dem Von-Datum liegen.', 'warning'); return; }
+                    }
                     payload = { ...base, kind: 'new', event: {
                         type: f.type, team, field: f.field || '',
                         date: f.date, day: dateToWeekday(f.date),
+                        dateEnd: f.type === 'camp' ? f.dateEnd : '',
                         time: f.time, duration: f.duration || 1.5, title: f.title.trim(),
                         cabin: [], trainer: userProfile.name, position: ''
                     } };
@@ -1475,7 +1502,7 @@
 
             // Zwischenschritt einer Spielverlegung: DFBNet-Antrag wurde gestellt
             const markDfbnetSubmitted = (req) => {
-                if (!isAdmin || !req) return;
+                if (!canManageRequests || !req) return;
                 db.collection('requests').doc(req.id).update({
                     status: 'dfbnet', dfbnetBy: userProfile?.name || 'Admin', dfbnetAt: Date.now()
                 }).then(() => {
@@ -1487,7 +1514,7 @@
 
             // Antragsprüfung öffnen: Platz/Kabinen vorbelegen, dann Dialog anzeigen
             const openReview = (req) => {
-                if (!isAdmin || !req) return;
+                if (!canManageRequests || !req) return;
                 let field = '', cabin = [], position = '';
                 if (req.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(req.targetEventId));
@@ -1507,7 +1534,7 @@
 
             // Antrag genehmigen – mit vom Admin gewähltem Platz, Kabinen und Position
             const confirmApproveRequest = (req, field, cabin, position) => {
-                if (!isAdmin || !req) return;
+                if (!canManageRequests || !req) return;
                 if (req.kind === 'reschedule') {
                     const target = events.find(e => String(e.id) === String(req.targetEventId));
                     if (!target) { addNotification('Das betroffene Spiel wurde nicht gefunden.', 'warning'); return; }
@@ -1534,6 +1561,34 @@
                 } else {
                     const ev = req.event || {};
                     const iso = ev.date || ev.eventDate || '';
+                    // Trainingslager mit Zeitraum: ein Termin pro Tag anlegen
+                    if (ev.type === 'camp' && ev.dateEnd && ev.dateEnd >= iso) {
+                        const seriesId = 'C' + Date.now();
+                        const dayEvents = [];
+                        const cur = new Date(iso + 'T00:00:00');
+                        const end = new Date(ev.dateEnd + 'T00:00:00');
+                        let i = 0;
+                        while (cur <= end && i < 90) {
+                            const base = { ...ev, field: field || ev.field || '', cabin, position: position || '' };
+                            delete base.dateEnd;
+                            dayEvents.push({ ...withDateFields(base, toISODate(cur)), id: Date.now() + i, seriesId, isSeriesEvent: true });
+                            cur.setDate(cur.getDate() + 1);
+                            i++;
+                        }
+                        const doIt = () => {
+                            commitEvents([...events, ...dayEvents]);
+                            finishRequest(req, 'approved');
+                            setRequestReviewTarget(null);
+                            addNotification(`Trainingslager genehmigt – ${dayEvents.length} Termine angelegt`, 'success');
+                            pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
+                                body: `Dein Trainingslager (${formatISODate(iso)} – ${formatISODate(ev.dateEnd)}) wurde genehmigt.` });
+                        };
+                        const conf = dayEvents.flatMap(de => findConflicts(de));
+                        const closConf = dayEvents.flatMap(de => closuresForEvent(de));
+                        if (conf.length > 0 || closConf.length > 0) { askConfirm(conflictMessage(conf, closConf, dayEvents[0]), doIt); }
+                        else doIt();
+                        return;
+                    }
                     const newEv = { ...ev, field: field || ev.field || '', cabin, position: position || '', id: Date.now(),
                         day: iso ? dateToWeekday(iso) : ev.day,
                         weekOffset: iso ? dateToWeekOffset(iso) : undefined,
@@ -1555,7 +1610,7 @@
             };
 
             const rejectRequest = (req, note) => {
-                if (!isAdmin) return;
+                if (!canManageRequests) return;
                 finishRequest(req, 'rejected', note);
                 addNotification('Antrag abgelehnt', 'info');
                 pushNotification([req.requestedBy], { type: 'request_rejected', title: 'Antrag abgelehnt',
@@ -1731,7 +1786,7 @@
                 const event = events.find(e => e.id === id);
                 if (!event) return;
                 // Serienelement: Admin bekommt die Wahl, die ganze Serie zu löschen
-                if (isAdmin && getSeriesSiblings(event).length > 1) {
+                if (canEdit && getSeriesSiblings(event).length > 1) {
                     setEditingEvent(null);
                     setSeriesDeleteTarget(event);
                     return;
@@ -1834,10 +1889,11 @@
 
             const clearFilters = () => {
                 setFilters({ field: '', type: '', team: '' });
+                setShowAway(true);
             };
 
             const hasActiveFilters = () => {
-                return filters.field || filters.type || filters.team;
+                return filters.field || filters.type || filters.team || !showAway;
             };
 
             const todayISO = toISODate(new Date());
@@ -1878,7 +1934,7 @@
                     <div className="flex-shrink-0 bg-gray-50">
                         <div className="max-w-7xl mx-auto px-4 pt-4">
                     {/* Header */}
-                    <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+                    <div className="flex items-end justify-between mb-4 flex-wrap gap-4">
                         <div className="flex items-center gap-3">
                             {appLogo
                                 ? <img src={appLogo} alt="Logo" className="w-10 h-10 rounded-full object-cover bg-white" />
@@ -1899,7 +1955,7 @@
                         </div>
                         <div className="flex items-center gap-2 no-print">
                             {FIREBASE_READY && isRealAdmin && (
-                                <button onClick={() => setViewAsUser(v => !v)} title="Zwischen Admin- und Benutzer-Ansicht wechseln" className={`px-3 py-2 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${viewAsUser ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-slate-700 text-white hover:bg-slate-800'}`}><Icon name={viewAsUser ? 'user' : 'unlock'} className="w-4 h-4" /> <span>{viewAsUser ? 'Benutzer-Ansicht' : 'Admin-Ansicht'}</span></button>
+                                <button onClick={() => setViewAsUser(v => !v)} title={viewAsUser ? 'Benutzer-Ansicht (klicken für Admin-Ansicht)' : 'Admin-Ansicht (klicken für Benutzer-Ansicht)'} aria-label="Zwischen Admin- und Benutzer-Ansicht wechseln" className={`p-2 rounded transition-colors flex items-center justify-center ${viewAsUser ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-slate-700 text-white hover:bg-slate-800'}`}><Icon name={viewAsUser ? 'user' : 'unlock'} className="w-5 h-5" /></button>
                             )}
                             {FIREBASE_READY && authUser && (
                                 <button onClick={() => setShowInbox(true)} title="Benachrichtigungen" aria-label="Benachrichtigungen" className="relative bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="bell" className="w-5 h-5" />{unreadInbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{unreadInbox.length}</span>}</button>
@@ -1933,17 +1989,11 @@
                                 {FIREBASE_READY && isTrainerLike && (
                                     <button onClick={() => setMyUnitsOnly(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${myUnitsOnly ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="activity" /> <span>Meine Einheiten{myUnitsOnly ? ' •' : ''}</span></button>
                                 )}
-                                {FIREBASE_READY && (isAdmin || isTrainerLike) && (
-                                    <button onClick={() => setShowAway(s => !s)} className={`flex-1 sm:flex-none px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-1.5 ${showAway ? 'bg-slate-600 text-white hover:bg-slate-700' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}><Icon name="mapPin" /> <span>Auswärts {showAway ? 'an' : 'aus'}</span></button>
-                                )}
-                                {FIREBASE_READY && (isAdmin || isTrainerLike) && (
-                                    <button onClick={() => setShowRequestsModal(true)} className="relative flex-1 sm:flex-none bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="repeat" /> <span>Anträge</span>{isAdmin && pendingRequests.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{pendingRequests.length}</span>}</button>
+                                {FIREBASE_READY && (isAdmin || isApprover || isTrainerLike) && (
+                                    <button onClick={() => setShowRequestsModal(true)} className="relative flex-1 sm:flex-none bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="repeat" /> <span>Anträge</span>{canManageRequests && pendingRequests.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{pendingRequests.length}</span>}</button>
                                 )}
                                 {FIREBASE_READY && isAdmin && (
-                                    <button onClick={() => setShowUserModal(true)} className="flex-1 sm:flex-none bg-slate-700 text-white px-3 py-2 rounded text-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="users" /> <span>Benutzer</span></button>
-                                )}
-                                {FIREBASE_READY && isAdmin && (
-                                    <button onClick={() => setShowStammdatenModal(true)} className="flex-1 sm:flex-none bg-slate-600 text-white px-3 py-2 rounded text-sm hover:bg-slate-700 transition-colors flex items-center justify-center gap-1.5"><Icon name="grid" /> <span>Stammdaten</span></button>
+                                    <button onClick={() => { setManagementTab('users'); setShowManagement(true); }} className="flex-1 sm:flex-none bg-slate-700 text-white px-3 py-2 rounded text-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"><Icon name="settings" /> <span>Verwaltung</span></button>
                                 )}
                             </div>
                         </div>
@@ -2007,6 +2057,12 @@
                                 </select>
                             </div>
                         </div>
+                        {FIREBASE_READY && (isAdmin || isApprover || isTrainerLike) && (
+                            <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer">
+                                <input type="checkbox" checked={showAway} onChange={(e) => setShowAway(e.target.checked)} className="w-4 h-4 accent-orange-500" />
+                                Auswärtsspiele anzeigen
+                            </label>
+                        )}
                         {hasActiveFilters() && (
                             <div className="mt-3 text-sm text-gray-600">
                                 Zeige {getFilteredEvents().length} von {events.length} Terminen
@@ -2697,13 +2753,19 @@
                         </div>
                     )}
 
-                    {/* Modal: Benutzerverwaltung */}
-                    {showUserModal && (
-                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowUserModal(false); }}>
+                    {/* Modal: Verwaltung – Tab Benutzer */}
+                    {showManagement && managementTab === 'users' && (
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowManagement(false); }}>
                             <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex justify-between items-center p-6 border-b">
-                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="users" className="w-5 h-5" /> Benutzerverwaltung</h2>
-                                    <button onClick={() => setShowUserModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                <div className="border-b">
+                                    <div className="flex justify-between items-center px-6 pt-5 pb-3">
+                                        <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="settings" className="w-5 h-5" /> Verwaltung</h2>
+                                        <button onClick={() => setShowManagement(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                    </div>
+                                    <div className="flex gap-1 px-4 pb-2">
+                                        <button onClick={() => setManagementTab('users')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${managementTab === 'users' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Benutzer</button>
+                                        <button onClick={() => setManagementTab('stammdaten')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${managementTab === 'stammdaten' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Stammdaten</button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6 space-y-5">
                                     <div className="space-y-2">
@@ -2754,6 +2816,7 @@
                                             <select value={userForm.role} onChange={(e) => setUserForm({...userForm, role: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
                                                 <option value="trainer">Trainer</option>
                                                 <option value="cotrainer">Co-Trainer</option>
+                                                <option value="approver">Bearbeiter</option>
                                                 <option value="admin">Admin</option>
                                             </select>
                                         </div>
@@ -2778,19 +2841,25 @@
                                     </div>
                                 </div>
                                 <div className="flex p-6 border-t bg-gray-50">
-                                    <button onClick={() => setShowUserModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
+                                    <button onClick={() => setShowManagement(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Modal: Stammdaten (Teams & Farben) */}
-                    {showStammdatenModal && (
-                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowStammdatenModal(false); }}>
+                    {/* Modal: Verwaltung – Tab Stammdaten */}
+                    {showManagement && managementTab === 'stammdaten' && (
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowManagement(false); }}>
                             <div className="bg-white rounded-t-2xl sm:rounded-lg w-full max-w-md max-h-[calc(92vh_-_var(--kb-inset))] sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex justify-between items-center p-6 border-b">
-                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="grid" className="w-5 h-5" /> Stammdaten</h2>
-                                    <button onClick={() => setShowStammdatenModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                <div className="border-b">
+                                    <div className="flex justify-between items-center px-6 pt-5 pb-3">
+                                        <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="settings" className="w-5 h-5" /> Verwaltung</h2>
+                                        <button onClick={() => setShowManagement(false)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+                                    </div>
+                                    <div className="flex gap-1 px-4 pb-2">
+                                        <button onClick={() => setManagementTab('users')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${managementTab === 'users' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Benutzer</button>
+                                        <button onClick={() => setManagementTab('stammdaten')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${managementTab === 'stammdaten' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Stammdaten</button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6 space-y-3">
                                     <div className="space-y-2">
@@ -2910,7 +2979,7 @@
                                     </div>
                                 </div>
                                 <div className="flex p-6 border-t bg-gray-50">
-                                    <button onClick={() => setShowStammdatenModal(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
+                                    <button onClick={() => setShowManagement(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Schließen</button>
                                 </div>
                             </div>
                         </div>
@@ -3042,11 +3111,25 @@
                                                     {myTeams.length === 1 && (
                                                         <p className="text-xs text-gray-500">Team: <span className="font-medium">{myTeams[0]}</span></p>
                                                     )}
+                                                    {requestForm.type === 'camp' && (
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-sm font-medium mb-1">Von *</label>
+                                                                <DateField value={requestForm.date} onChange={(iso) => setRequestForm({...requestForm, date: iso})} className="w-full border rounded-md p-2 text-sm" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-medium mb-1">Bis *</label>
+                                                                <DateField value={requestForm.dateEnd} min={requestForm.date || undefined} onChange={(iso) => setRequestForm({...requestForm, dateEnd: iso})} className="w-full border rounded-md p-2 text-sm" />
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     <div className="grid grid-cols-3 gap-2">
+                                                        {requestForm.type !== 'camp' && (
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Datum *</label>
                                                             <DateField value={requestForm.date} onChange={(iso) => setRequestForm({...requestForm, date: iso})} className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
+                                                        )}
                                                         <div>
                                                             <label className="block text-sm font-medium mb-1">Uhrzeit *</label>
                                                             <select value={requestForm.time} onChange={(e) => setRequestForm({...requestForm, time: e.target.value})} className="w-full border rounded-md p-2 text-sm">
@@ -3082,9 +3165,9 @@
                                         </div>
                                     )}
                                     <div className="space-y-2 border-t pt-4">
-                                        <h3 className="text-sm font-semibold text-gray-700">{isAdmin ? 'Alle Anträge' : 'Meine Anträge'}</h3>
+                                        <h3 className="text-sm font-semibold text-gray-700">{canManageRequests ? 'Alle Anträge' : 'Meine Anträge'}</h3>
                                         {(() => {
-                                            const list = (isAdmin ? requests : requests.filter(r => r.requestedBy === authUser?.uid))
+                                            const list = (canManageRequests ? requests : requests.filter(r => r.requestedBy === authUser?.uid))
                                                 .slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
                                             if (list.length === 0) return <p className="text-sm text-gray-500">Keine Anträge.</p>;
                                             const statusStyle = { pending: 'bg-amber-100 text-amber-800', dfbnet: 'bg-blue-100 text-blue-800', approved: 'bg-green-100 text-green-800', rejected: 'bg-red-100 text-red-700' };
@@ -3101,12 +3184,12 @@
                                                         <div className="text-xs text-gray-600 mt-0.5">
                                                             {r.kind === 'reschedule'
                                                                 ? <>{target ? `${target.team} ${eventTypes[target.type].label}` : 'Spiel'} → {formatISODate(r.proposed?.date)} {r.proposed?.time}{r.proposed?.field ? ` · ${fld?.name}` : ''}</>
-                                                                : <>{r.event.team} · {formatISODate(r.event.date || r.event.eventDate)} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}</>}
+                                                                : <>{r.event.team} · {formatISODate(r.event.date || r.event.eventDate)}{r.event.dateEnd ? ` – ${formatISODate(r.event.dateEnd)}` : ''} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}</>}
                                                         </div>
                                                         <div className="text-xs text-gray-400 mt-0.5">von {r.requestedByName}</div>
                                                         {r.note && <div className="text-xs text-gray-600 mt-1 italic">„{r.note}"</div>}
                                                         {r.adminNote && <div className="text-xs text-red-600 mt-1">Admin: {r.adminNote}</div>}
-                                                        {isAdmin && (r.status === 'pending' || r.status === 'dfbnet') && (
+                                                        {canManageRequests && (r.status === 'pending' || r.status === 'dfbnet') && (
                                                             rejectTarget === r.id ? (
                                                                 <div className="mt-2 space-y-1.5">
                                                                     <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} rows="2" className="w-full border rounded p-1.5 text-xs" placeholder="Grund (optional)" />
@@ -3124,7 +3207,7 @@
                                                                 </div>
                                                             )
                                                         )}
-                                                        {!isAdmin && r.status === 'pending' && (
+                                                        {!canManageRequests && r.status === 'pending' && (
                                                             <button onClick={() => withdrawRequest(r)} className="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded mt-2">Zurückziehen</button>
                                                         )}
                                                     </div>
@@ -3160,7 +3243,7 @@
                                     <div className="flex-1 overflow-y-auto p-5 space-y-3">
                                         <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-1 text-sm">
                                             <div className="font-semibold">{requestTypeOptions[r.type] || r.type}</div>
-                                            <div className="text-gray-700">{teamName || '?'} · {formatISODate(dateIso)} {time} Uhr</div>
+                                            <div className="text-gray-700">{teamName || '?'} · {formatISODate(dateIso)}{r.kind !== 'reschedule' && ev.dateEnd ? ` – ${formatISODate(ev.dateEnd)}` : ''} {time} Uhr</div>
                                             {r.kind === 'reschedule' && target && <div className="text-gray-600 text-xs">Bisher: {target.day} {target.time} Uhr{target.field ? ` · ${fields.find(f => f.id === target.field)?.name}` : ''}</div>}
                                             {ev.title && <div className="text-gray-600 text-xs">{ev.title}</div>}
                                             <div className="text-gray-500 text-xs">Antragsteller: {r.requestedByName}</div>
