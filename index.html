@@ -160,8 +160,10 @@
             const pad = (n) => String(n).padStart(2, '0');
             const toIso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
             const fmt = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; };
+            // Wert defensiv auf reines ISO-Datum kürzen (fängt Zeitstempel-Altdaten ab)
+            const val = (typeof value === 'string' ? value : '').slice(0, 10);
             const today = new Date();
-            const base = value ? new Date(value + 'T00:00:00') : today;
+            const base = val ? new Date(val + 'T00:00:00') : today;
             const [view, setView] = useState({ y: base.getFullYear(), m: base.getMonth() });
             const first = new Date(view.y, view.m, 1);
             const startDow = (first.getDay() + 6) % 7;
@@ -173,7 +175,7 @@
             return (
                 <div className="relative">
                     <button type="button" onClick={() => setOpen(o => !o)} className={`${className} text-left flex items-center justify-between gap-2`}>
-                        <span className={value ? '' : 'text-gray-400'}>{value ? fmt(value) : 'TT.MM.JJJJ'}</span>
+                        <span className={val ? '' : 'text-gray-400'}>{val ? fmt(val) : 'TT.MM.JJJJ'}</span>
                         <Icon name="calendar" className="w-4 h-4 text-gray-500" />
                     </button>
                     {open && (
@@ -192,14 +194,14 @@
                                     return (
                                         <button key={iso} type="button" disabled={disabled}
                                             onClick={() => { onChange(iso); setOpen(false); }}
-                                            className={`text-sm rounded py-1 ${iso === value ? 'bg-green-600 text-white' : iso === todayIso ? 'bg-green-100' : 'hover:bg-gray-100'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
+                                            className={`text-sm rounded py-1 ${iso === val ? 'bg-green-600 text-white' : iso === todayIso ? 'bg-green-100' : 'hover:bg-gray-100'} ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}>
                                             {d}
                                         </button>
                                     );
                                 })}
                             </div>
                             <div className="flex justify-between mt-1">
-                                {value ? <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="text-xs text-gray-500 hover:text-gray-700">Löschen</button> : <span></span>}
+                                {val ? <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="text-xs text-gray-500 hover:text-gray-700">Löschen</button> : <span></span>}
                                 <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700">Schließen</button>
                             </div>
                         </div>
@@ -209,7 +211,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.39.5'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.39.6'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -454,12 +456,30 @@
                 return `${y}-${m}-${d}`;
             };
 
+            // Beliebigen Datumswert auf ein reines ISO-Datum (JJJJ-MM-TT) reduzieren.
+            // Fängt Altdaten/Zeitstempel wie "2026-05-21T11:53:01.616Z" ab.
+            const toDateOnly = (v) => {
+                if (!v) return '';
+                const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+                return m ? m[1] : '';
+            };
+
+            // Termin mit defektem Datum heilen (Zeitstempel statt reinem Datum)
+            const healEventDate = (e) => {
+                const raw = e.date || e.eventDate;
+                if (!raw) return e;
+                const iso = toDateOnly(raw);
+                if (iso && (e.date !== iso || e.eventDate !== iso || !e.day || e.weekOffset === undefined || Number.isNaN(e.weekOffset))) {
+                    return { ...e, date: iso, eventDate: iso, day: dateToWeekday(iso), weekOffset: dateToWeekOffset(iso) };
+                }
+                return e;
+            };
+
             // ISO-Datum kurz darstellen: "2026-05-17" -> "17.05."
             const formatISODate = (iso) => {
                 if (!iso) return '';
                 const [, m, d] = iso.split('-');
-                return `${d}.${m}.`;
-            };
+                return `${d}.${m}.`;            };
 
             const getWeekDates = (weekOffset = 0) => {
                 const weekStart = getWeekStart(weekOffset);
@@ -662,7 +682,7 @@
                     if (r) openReview(r);
                     return;
                 }
-                if (canEdit) { setEditingEvent({ ...event, date: event.date || event.eventDate || '' }); return; }
+                if (canEdit) { setEditingEvent({ ...event, date: toDateOnly(event.date || event.eventDate) }); return; }
                 if (ownsEvent(event)) { setEventActionTarget(event); }
             };
 
@@ -874,7 +894,7 @@
                 if (!FIREBASE_READY) {
                     try {
                         const saved = localStorage.getItem('football-events');
-                        setEvents(saved ? JSON.parse(saved) : EXAMPLE_EVENTS);
+                        setEvents((saved ? JSON.parse(saved) : EXAMPLE_EVENTS).map(healEventDate));
                         const savedClosures = localStorage.getItem('football-closures');
                         setClosures(savedClosures ? JSON.parse(savedClosures) : []);
                         const savedColors = localStorage.getItem('football-teamcolors');
@@ -905,7 +925,7 @@
                 const unsubData = planDoc().onSnapshot(
                     (snap) => {
                         const data = snap.exists ? snap.data() : null;
-                        setEvents(data && Array.isArray(data.events) ? data.events : []);
+                        setEvents(data && Array.isArray(data.events) ? data.events.map(healEventDate) : []);
                         setClosures(data && Array.isArray(data.closures) ? data.closures : []);
                         setTeamColors({ ...DEFAULT_TEAM_COLORS, ...((data && data.teamColors) || {}) });
                         setTeams(data && Array.isArray(data.teams) && data.teams.length > 0 ? data.teams : DEFAULT_TEAMS);
@@ -1546,7 +1566,7 @@
                     const isAwayTarget = GAME_TYPES.includes(target.type) && target.venue === 'away';
                     const dateFields = {
                         day: dateToWeekday(p.date) || target.day, time: p.time || target.time,
-                        weekOffset: dateToWeekOffset(p.date), eventDate: p.date || '' };
+                        weekOffset: dateToWeekOffset(p.date), date: p.date || target.date || '', eventDate: p.date || '' };
                     const updated = isAwayTarget
                         ? { ...target, field: '', cabin: [], position: '', ...dateFields }
                         : { ...target, field: field || target.field, cabin, position: position || '', ...dateFields };
@@ -1651,10 +1671,10 @@
             };
 
             // Termin-Objekt aus dem Datum mit Wochentag/Wochen-Versatz anreichern
-            const withDateFields = (ev, iso) => ({
-                ...ev, date: iso, day: dateToWeekday(iso),
-                weekOffset: dateToWeekOffset(iso), eventDate: iso
-            });
+            const withDateFields = (ev, iso) => {
+                const d = toDateOnly(iso);
+                return { ...ev, date: d, day: dateToWeekday(d), weekOffset: dateToWeekOffset(d), eventDate: d };
+            };
 
             const addEvent = () => {
                 if (!requireEditor()) return;
@@ -3452,7 +3472,7 @@
                                     </div>
                                 </div>
                                 <div className="flex gap-3 p-6 border-t bg-gray-50">
-                                    <button onClick={() => deleteEvent(editingEvent.id)} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Löschen</button>
+                                    <button onClick={() => { const id = editingEvent.id; setEditingEvent(null); deleteEvent(id); }} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Löschen</button>
                                     <button onClick={() => setEditingEvent(null)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
                                     <button onClick={updateEvent} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Speichern</button>
                                 </div>
