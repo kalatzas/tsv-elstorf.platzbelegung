@@ -210,8 +210,45 @@
             );
         };
 
+        // Wert als Liste normalisieren (String, Array oder leer -> Array)
+        const asList = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+        const joinList = (v) => asList(v).join(', ');
+
+        // Mehrfachauswahl als Dropdown: Button + Panel mit Checkboxen
+        const MultiSelect = ({ values, options, onChange, placeholder = 'Wählen', accent = 'green', className = '' }) => {
+            const [open, setOpen] = useState(false);
+            const sel = asList(values);
+            const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
+            const toggle = (v) => onChange(sel.includes(v) ? sel.filter(x => x !== v) : [...sel, v]);
+            return (
+                <div className="relative">
+                    <button type="button" onClick={() => setOpen(o => !o)} className={`${className} text-left flex items-center justify-between gap-2`}>
+                        <span className={sel.length ? 'truncate' : 'text-gray-400'}>{sel.length ? sel.join(', ') : placeholder}</span>
+                        <Icon name="chevronRight" className="w-4 h-4 text-gray-500 shrink-0 rotate-90" />
+                    </button>
+                    {open && (
+                        <div className="absolute z-50 mt-1 bg-white border rounded-lg shadow-lg p-1 w-full max-h-56 overflow-y-auto">
+                            {opts.length === 0 && <div className="text-xs text-gray-400 p-2">Keine Auswahl verfügbar</div>}
+                            {opts.map(o => {
+                                const checked = sel.includes(o.value);
+                                return (
+                                    <label key={o.value} className={`flex items-center gap-2 text-sm rounded p-2 cursor-pointer ${checked ? 'bg-green-50' : 'hover:bg-gray-100'}`}>
+                                        <input type="checkbox" checked={checked} onChange={() => toggle(o.value)} className={`w-4 h-4 accent-${accent}-600`} />
+                                        <span className="truncate">{o.label}</span>
+                                    </label>
+                                );
+                            })}
+                            <div className="flex justify-end border-t mt-1 pt-1">
+                                <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1">Schließen</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const App = () => {
-            const APP_VERSION = '2.39.7'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.40.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -302,7 +339,7 @@
 
             const emptyNewEvent = {
                 field: '', date: '', time: '', duration: 1.5, type: 'training', venue: 'home',
-                team: '', title: '', cabin: [], trainer: '', position: '', isSeries: false, endDate: ''
+                team: [], title: '', cabin: [], trainer: [], position: '', isSeries: false, endDate: ''
             };
             const [newEvent, setNewEvent] = useState(emptyNewEvent);
 
@@ -329,7 +366,7 @@
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
             const [rejectTarget, setRejectTarget] = useState(null);
             const [rejectNote, setRejectNote] = useState('');
-            const emptyRequestForm = { type: 'friendly', team: '', field: '', date: '', dateEnd: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
+            const emptyRequestForm = { type: 'friendly', team: [], field: '', date: '', dateEnd: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
             const [requestForm, setRequestForm] = useState(emptyRequestForm);
             const [requestReviewTarget, setRequestReviewTarget] = useState(null);
             const [reviewForm, setReviewForm] = useState({ field: '', cabin: [], position: '' });
@@ -367,8 +404,8 @@
                 if (ta !== tb) return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb);
                 const tc = (a.time || '').localeCompare(b.time || '');
                 if (tc !== 0) return tc;
-                const ya = teams.indexOf(a.team);
-                const yb = teams.indexOf(b.team);
+                const ya = teams.indexOf(asList(a.team)[0]);
+                const yb = teams.indexOf(asList(b.team)[0]);
                 return (ya < 0 ? 999 : ya) - (yb < 0 ? 999 : yb);
             };
 
@@ -383,11 +420,11 @@
 
                     if (filters.field && event.field !== filters.field) return false;
                     if (filters.type && event.type !== filters.type) return false;
-                    if (filters.team && event.team !== filters.team) return false;
-                    if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
+                    if (filters.team && !asList(event.team).includes(filters.team)) return false;
+                    if (myUnitsOnly && isTrainerLike && !asList(event.team).some(t => myTeams.includes(t))) return false;
                     // Auswärtsspiele sehen nur Admins und der Trainer des betroffenen Teams
                     if (event.venue === 'away' && GAME_TYPES.includes(event.type)) {
-                        if (!isAdmin && !isApprover && !myTeams.includes(event.team)) return false;
+                        if (!isAdmin && !isApprover && !asList(event.team).some(t => myTeams.includes(t))) return false;
                         if (!showAway) return false;
                     }
                     return true;
@@ -401,10 +438,10 @@
                     if (event.weekOffset !== undefined && event.weekOffset !== weekOffset) return false;
                     if (filters.field && event.field !== filters.field) return false;
                     if (filters.type && event.type !== filters.type) return false;
-                    if (filters.team && event.team !== filters.team) return false;
-                    if (myUnitsOnly && isTrainerLike && !myTeams.includes(event.team)) return false;
+                    if (filters.team && !asList(event.team).includes(filters.team)) return false;
+                    if (myUnitsOnly && isTrainerLike && !asList(event.team).some(t => myTeams.includes(t))) return false;
                     if (event.venue === 'away' && GAME_TYPES.includes(event.type)) {
-                        if (!isAdmin && !isApprover && !myTeams.includes(event.team)) return false;
+                        if (!isAdmin && !isApprover && !asList(event.team).some(t => myTeams.includes(t))) return false;
                         if (!showAway) return false;
                     }
                     return true;
@@ -639,7 +676,7 @@
                     const first = eventConflicts[0];
                     const firstLabel = first.type === 'blocked'
                         ? 'eine Platzsperre'
-                        : `${first.team} (${eventTypes[first.type].label})`;
+                        : `${joinList(first.team)} (${eventTypes[first.type].label})`;
                     const more = eventConflicts.length > 1
                         ? ` (+${eventConflicts.length - 1} weitere Überschneidung${eventConflicts.length - 1 > 1 ? 'en' : ''})`
                         : '';
@@ -648,7 +685,7 @@
                         && eventConflicts.find(c => c.type === 'training');
                     if (overriddenTraining) {
                         parts.push(`Das Pflichtspiel am ${candidate.day} um ${first.time}–${getEventEndTime(first)} Uhr `
-                            + `überschneidet sich mit dem Training von ${overriddenTraining.team}. `
+                            + `überschneidet sich mit dem Training von ${joinList(overriddenTraining.team)}. `
                             + `Pflichtspiele haben Vorrang – bitte das Trainerteam informieren und das Training verlegen.`);
                     } else {
                         parts.push(`${candidate.day}, ${first.time}–${getEventEndTime(first)} Uhr `
@@ -701,7 +738,7 @@
                 const isGame = GAME_TYPES.includes(event.type);
                 const isAway = isGame && event.venue === 'away';
                 const heading = isBlocked ? 'Sperre'
-                    : (isGame && event.title ? `${event.team} – ${event.title}` : event.team);
+                    : (isGame && event.title ? `${joinList(event.team)} – ${event.title}` : joinList(event.team));
                 return (
                     <div
                         key={event.id}
@@ -722,13 +759,13 @@
                         )}
                         <div className="flex-1 min-w-0 p-2">
                             <div className="flex items-start gap-1.5 min-w-0">
-                                <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: isBlocked ? '#6b7280' : (teamColors[event.team] || '#9ca3af') }}></span>
+                                <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: isBlocked ? '#6b7280' : (teamColors[asList(event.team)[0]] || '#9ca3af') }}></span>
                                 <span className={`text-sm font-bold text-gray-900 leading-tight ${isCancelled ? 'line-through' : ''}`}>{heading}</span>
                             </div>
                             <div className="space-y-0.5 mt-1">
                                 <div className="flex items-center gap-1 text-gray-700"><Icon name="clock" className="w-3 h-3" /> {event.time} – {getEventEndTime(event)}</div>
                                 <div className="flex items-center gap-1 text-gray-600"><Icon name="mapPin" className="w-3 h-3" /> {isAway ? 'Auswärts' : <>{field?.name}{!isBlocked && ` (${event.position ? positions.find(p => p.value === event.position)?.label : 'ganzer Platz'})`}</>}</div>
-                                {event.trainer && <div className="flex items-center gap-1 text-gray-600"><Icon name="user" className="w-3 h-3" /> {trainerFirstName(event.trainer)}</div>}
+                                {asList(event.trainer).length > 0 && <div className="flex items-center gap-1 text-gray-600"><Icon name="user" className="w-3 h-3" /> {asList(event.trainer).map(trainerFirstName).join(', ')}</div>}
                                 {cabinText(event.cabin) && <div className="flex items-center gap-1 text-gray-600"><Icon name="door" className="w-3 h-3" /> {cabinText(event.cabin)}</div>}
                             </div>
                             <div className="flex items-center justify-end gap-1 mt-1">
@@ -1196,7 +1233,7 @@
             };
 
             const removeTeam = (t) => {
-                const used = events.filter(e => e.team === t).length;
+                const used = events.filter(e => asList(e.team).includes(t)).length;
                 const remove = () => commitTeams(teams.filter(x => x !== t));
                 if (used > 0) {
                     askConfirm(`Team „${t}" entfernen? ${used} vorhandene Termine behalten den Namen, das Team verschwindet aber aus den Auswahllisten.`, remove);
@@ -1237,7 +1274,7 @@
             const isTrainerLike = userRole === 'trainer' || userRole === 'cotrainer' || (isRealAdmin && viewAsUser);
             const myTeams = (userProfile && Array.isArray(userProfile.teams)) ? userProfile.teams : [];
             // Gehört dieser Termin (Training) zu einem meiner Teams?
-            const ownsEvent = (event) => isTrainerLike && event && event.type === 'training' && myTeams.includes(event.team);
+            const ownsEvent = (event) => isTrainerLike && event && event.type === 'training' && asList(event.team).some(t => myTeams.includes(t));
             const pendingRequests = requests.filter(r => r.status === 'pending');
 
             // Prüft, ob bearbeitet werden darf; sonst Anmelde-Dialog bzw. Hinweis
@@ -1255,7 +1292,8 @@
             const openAddModal = (extra = {}) => {
                 if (!requireEditor()) return;
                 const team = myTeams.length > 0 ? myTeams[0] : '';
-                setNewEvent({ ...emptyNewEvent, team, trainer: trainerForTeam(team) || '', ...extra });
+                const tr = team ? trainerForTeam(team) : '';
+                setNewEvent({ ...emptyNewEvent, team: team ? [team] : [], trainer: tr ? [tr] : [], ...extra });
                 setShowAddModal(true);
             };
 
@@ -1430,9 +1468,9 @@
                         ? { ...e, cancelled: true, cancelledBy: userProfile?.name || 'Admin', cancelledAt: Date.now() }
                         : e));
                     addNotification('Einheit abgesagt', 'info');
-                    pushNotification(canEdit ? teamTrainerUids(event.team) : adminUids(), {
+                    pushNotification(canEdit ? [...new Set(asList(event.team).flatMap(teamTrainerUids))] : adminUids(), {
                         type: 'event_cancelled', title: 'Einheit fällt aus',
-                        body: `${event.team} Training am ${event.day}, ${event.time} Uhr fällt aus (${userProfile?.name || 'Admin'}).`
+                        body: `${joinList(event.team)} Training am ${event.day}, ${event.time} Uhr fällt aus (${userProfile?.name || 'Admin'}).`
                     });
                 });
             };
@@ -1453,9 +1491,9 @@
                     const previous = events;
                     commitEvents(events.filter(e => e.id !== event.id));
                     addNotification('Einheit gelöscht', 'info', { duration: 7000, action: { label: 'Rückgängig', onClick: () => { commitEvents(previous); addNotification('Einheit wiederhergestellt', 'success'); } } });
-                    pushNotification(canEdit ? teamTrainerUids(event.team) : adminUids(), {
+                    pushNotification(canEdit ? [...new Set(asList(event.team).flatMap(teamTrainerUids))] : adminUids(), {
                         type: 'event_deleted', title: 'Einheit gelöscht',
-                        body: `${event.team} Training am ${event.day}, ${event.time} Uhr wurde gelöscht (${userProfile?.name || 'Admin'}).`
+                        body: `${joinList(event.team)} Training am ${event.day}, ${event.time} Uhr wurde gelöscht (${userProfile?.name || 'Admin'}).`
                     });
                 });
             };
@@ -1485,9 +1523,9 @@
                     payload = { ...base, kind: 'reschedule', targetEventId: f.targetEventId,
                         proposed: { date: f.proposedDate, time: f.proposedTime, field: f.proposedField || '' } };
                 } else {
-                    // Team ergibt sich aus dem Profil; bei mehreren Teams ist es im Formular gewählt
-                    const team = myTeams.length === 1 ? myTeams[0] : f.team;
-                    if (!team) { addNotification('Bitte ein Team auswählen.', 'warning'); return; }
+                    // Team ergibt sich aus dem Profil; bei mehreren Teams im Formular gewählt
+                    const team = myTeams.length === 1 ? [myTeams[0]] : asList(f.team);
+                    if (team.length === 0) { addNotification('Bitte ein Team auswählen.', 'warning'); return; }
                     if (!f.date || !f.time) {
                         addNotification('Bitte Datum und Uhrzeit angeben.', 'warning');
                         return;
@@ -1501,7 +1539,7 @@
                         date: f.date, day: dateToWeekday(f.date),
                         dateEnd: f.type === 'camp' ? f.dateEnd : '',
                         time: f.time, duration: f.duration || 1.5, title: f.title.trim(),
-                        cabin: [], trainer: userProfile.name, position: ''
+                        cabin: [], trainer: [userProfile.name], position: ''
                     } };
                 }
                 try {
@@ -1576,7 +1614,7 @@
                         setRequestReviewTarget(null);
                         addNotification('Verlegung genehmigt', 'success');
                         pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
-                            body: `Deine Spielverlegung wurde genehmigt: ${updated.team} jetzt ${formatISODate(p.date)} ${updated.time} Uhr.` });
+                            body: `Deine Spielverlegung wurde genehmigt: ${joinList(updated.team)} jetzt ${formatISODate(p.date)} ${updated.time} Uhr.` });
                     };
                     const conf = findConflicts(updated).filter(c => c.id !== target.id);
                     const closConf = closuresForEvent(updated);
@@ -1659,11 +1697,11 @@
                         return 'Bitte Platz, Tag und Zeit auswählen!';
                     }
                 } else if (isAway) {
-                    if (!event.date || !event.time || !event.team) {
+                    if (!event.date || !event.time || asList(event.team).length === 0) {
                         return 'Bitte alle Pflichtfelder ausfüllen!';
                     }
                 } else {
-                    if (!event.field || !event.date || !event.time || !event.team) {
+                    if (!event.field || !event.date || !event.time || asList(event.team).length === 0) {
                         return 'Bitte alle Pflichtfelder ausfüllen!';
                     }
                 }
@@ -1691,7 +1729,7 @@
                 delete eventToAdd.isSeries;
                 delete eventToAdd.endDate;
                 if (eventToAdd.type === 'blocked') {
-                    eventToAdd.team = 'SPERRE';
+                    eventToAdd.team = ['SPERRE'];
                     if (!eventToAdd.title) {
                         eventToAdd.title = 'Platzsperre';
                     }
@@ -1784,7 +1822,7 @@
                 // Altdaten ohne seriesId: heuristisch über gleiche Eckdaten
                 if (event.isSeriesEvent) {
                     return events.filter(e => e.isSeriesEvent && e.day === event.day && e.time === event.time
-                        && e.field === event.field && e.team === event.team && e.type === event.type);
+                        && e.field === event.field && joinList(e.team) === joinList(event.team) && e.type === event.type);
                 }
                 return [event];
             };
@@ -1861,7 +1899,7 @@
                     ...events.map(e => [
                         fields.find(f => f.id === e.field)?.name || '',
                         e.day, e.time, e.duration, eventTypes[e.type].label,
-                        e.team, e.title || '', e.trainer || '', cabinText(e.cabin),
+                        joinList(e.team), e.title || '', joinList(e.trainer), cabinText(e.cabin),
                         positions.find(p => p.value === e.position)?.label || ''
                     ].map(field => `"${field}"`).join(','))
                 ].join('\n');
@@ -2258,7 +2296,7 @@
                                                 {/* Event Content */}
                                                 <div className="p-1 space-y-0.5">
                                                     {/* Jugend und Titel */}
-                                                    <div className="font-bold text-gray-800 text-xs truncate">{eventPos.team}</div>
+                                                    <div className="font-bold text-gray-800 text-xs truncate">{joinList(eventPos.team)}</div>
                                                     {!isCompact && <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>}
                                                     
                                                     {/* Platz und Position - kompakt */}
@@ -2279,8 +2317,8 @@
                                                     </div>
 
                                                     {/* Trainer - nur wenn nicht kompakt */}
-                                                    {eventPos.trainer && !isCompact && (
-                                                        <div className="flex items-center gap-1 text-gray-600 text-xs truncate"><Icon name="user" className="w-3 h-3" /> {trainerFirstName(eventPos.trainer)}</div>
+                                                    {asList(eventPos.trainer).length > 0 && !isCompact && (
+                                                        <div className="flex items-center gap-1 text-gray-600 text-xs truncate"><Icon name="user" className="w-3 h-3" /> {asList(eventPos.trainer).map(trainerFirstName).join(', ')}</div>
                                                     )}
                                                 </div>
                                             </div>
@@ -2456,14 +2494,14 @@
                                                                             <div className="p-1 text-xs h-full flex flex-col">
                                                                                 <div className="flex items-center gap-1">
                                                                                     <Icon name={eventType.icon} className="w-3 h-3" />
-                                                                                    {!isBlocker && <span className={`font-bold truncate ${event.cancelled ? 'line-through' : ''}`}>{event.team}</span>}
+                                                                                    {!isBlocker && <span className={`font-bold truncate ${event.cancelled ? 'line-through' : ''}`}>{joinList(event.team)}</span>}
                                                                                     {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
                                                                                 </div>
                                                                                 {event.isRequest && <div className="text-xs font-semibold bg-amber-300 text-amber-900 rounded px-1 self-start">Antrag</div>}
                                                                                 {event.cancelled && <div className="text-xs font-semibold">fällt aus</div>}
-                                                                                {event.duration > 0.5 && !isBlocker && event.trainer && (
+                                                                                {event.duration > 0.5 && !isBlocker && asList(event.trainer).length > 0 && (
                                                                                     <div className="truncate text-xs opacity-90">
-                                                                                        {trainerFirstName(event.trainer)}
+                                                                                        {asList(event.trainer).map(trainerFirstName).join(', ')}
                                                                                     </div>
                                                                                 )}
                                                                                 {event.position && (
@@ -2518,7 +2556,7 @@
 
                                 {/* Hauptinformationen */}
                                 <div className="space-y-1 text-sm">
-                                    <div className="font-bold text-gray-900">{hoveredEvent.team}</div>
+                                    <div className="font-bold text-gray-900">{joinList(hoveredEvent.team)}</div>
                                     <div className="font-medium text-gray-700">{hoveredEvent.title}</div>
 
                                     {/* Zeit */}
@@ -2537,10 +2575,10 @@
                                     </div>
 
                                     {/* Trainer */}
-                                    {hoveredEvent.trainer && (
+                                    {asList(hoveredEvent.trainer).length > 0 && (
                                         <div className="flex items-center gap-1.5 text-gray-600">
                                             <Icon name="user" className="w-4 h-4" />
-                                            <span>{trainerFirstName(hoveredEvent.trainer)}</span>
+                                            <span>{asList(hoveredEvent.trainer).map(trainerFirstName).join(', ')}</span>
                                         </div>
                                     )}
 
@@ -2604,11 +2642,16 @@
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Team *</label>
-                                            <select value={newEvent.team} onChange={(e) => { const v = e.target.value; setNewEvent({...newEvent, team: v, trainer: trainerForTeam(v) || newEvent.trainer}); }} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
+                                            <label className="block text-sm font-medium mb-1">Team * <span className="font-normal text-gray-400">(Mehrfachauswahl)</span></label>
+                                            <MultiSelect
+                                                values={newEvent.team}
+                                                options={teams}
+                                                placeholder="Wählen"
+                                                onChange={(vals) => {
+                                                    const auto = vals.map(trainerForTeam).filter(Boolean);
+                                                    setNewEvent({...newEvent, team: vals, trainer: [...new Set([...asList(newEvent.trainer), ...auto])]});
+                                                }}
+                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
                                         </div>
                                         {GAME_TYPES.includes(newEvent.type) && (
                                             <div>
@@ -2637,12 +2680,13 @@
                                             </div>
                                         )}
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Trainer</label>
-                                            <select value={newEvent.trainer} onChange={(e) => setNewEvent({...newEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {newEvent.trainer && !trainerOptions.some(u => u.name === newEvent.trainer) && <option value={newEvent.trainer}>{newEvent.trainer}</option>}
-                                                {trainerOptions.map(u => <option key={u.uid} value={u.name}>{u.name}</option>)}
-                                            </select>
+                                            <label className="block text-sm font-medium mb-1">Trainer <span className="font-normal text-gray-400">(Mehrfachauswahl)</span></label>
+                                            <MultiSelect
+                                                values={newEvent.trainer}
+                                                options={[...new Set([...trainerOptions.map(u => u.name), ...asList(newEvent.trainer)])]}
+                                                placeholder="Wählen"
+                                                onChange={(vals) => setNewEvent({...newEvent, trainer: vals})}
+                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent" />
                                         </div>
                                         {!(GAME_TYPES.includes(newEvent.type) && newEvent.venue === 'away') && (<>
                                         <div>
@@ -3024,7 +3068,7 @@
                                         <button onClick={() => setEventActionTarget(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
                                     </div>
                                     <div className="p-4 space-y-2">
-                                        <div className="text-sm"><span className="font-semibold">{ev.team}</span> · Training</div>
+                                        <div className="text-sm"><span className="font-semibold">{joinList(ev.team)}</span> · Training</div>
                                         <div className="text-sm text-gray-600">{ev.day}, {ev.time} – {getEventEndTime(ev)} Uhr</div>
                                         <div className="text-sm text-gray-600">{fld?.name}</div>
                                         {ev.cancelled && <p className="text-sm text-red-700 font-medium">Diese Einheit ist aktuell als „fällt aus" markiert{ev.cancelledBy ? ` (von ${ev.cancelledBy})` : ''}.</p>}
@@ -3053,7 +3097,7 @@
                                         <button onClick={() => setSeriesDeleteTarget(null)} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
                                     </div>
                                     <div className="p-4 space-y-3">
-                                        <p className="text-sm text-gray-600">Dieser Termin (<span className="font-semibold">{ev.team}</span>, {ev.day} {ev.time} Uhr) gehört zu einer Serie mit insgesamt {siblings.length} Terminen.</p>
+                                        <p className="text-sm text-gray-600">Dieser Termin (<span className="font-semibold">{joinList(ev.team)}</span>, {ev.day} {ev.time} Uhr) gehört zu einer Serie mit insgesamt {siblings.length} Terminen.</p>
                                         <p className="text-sm text-gray-600">Was möchtest du löschen?</p>
                                         <div className="flex flex-col gap-2">
                                             <button onClick={() => doDeleteEvents([ev.id], 'Termin gelöscht')} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm">Nur diesen Termin</button>
@@ -3090,8 +3134,8 @@
                                                         <label className="block text-sm font-medium mb-1">Betroffenes Spiel *</label>
                                                         <select value={requestForm.targetEventId} onChange={(e) => setRequestForm({...requestForm, targetEventId: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                                                             <option value="">– bitte wählen –</option>
-                                                            {events.filter(e => myTeams.includes(e.team) && GAME_TYPES.includes(e.type) && !e.cancelled).map(e => (
-                                                                <option key={e.id} value={e.id}>{e.team} · {eventTypes[e.type].label}{e.venue === 'away' ? ' (Auswärts)' : ''}{e.title ? ` (${e.title})` : ''} · {e.day} {e.time}</option>
+                                                            {events.filter(e => asList(e.team).some(t => myTeams.includes(t)) && GAME_TYPES.includes(e.type) && !e.cancelled).map(e => (
+                                                                <option key={e.id} value={e.id}>{joinList(e.team)} · {eventTypes[e.type].label}{e.venue === 'away' ? ' (Auswärts)' : ''}{e.title ? ` (${e.title})` : ''} · {e.day} {e.time}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -3128,11 +3172,14 @@
                                                 <>
                                                     {myTeams.length > 1 && (
                                                         <div>
-                                                            <label className="block text-sm font-medium mb-1">Team *</label>
-                                                            <select value={requestForm.team} onChange={(e) => setRequestForm({...requestForm, team: e.target.value})} className="w-full border rounded-md p-2 text-sm">
-                                                                <option value="">–</option>
-                                                                {myTeams.map(t => <option key={t} value={t}>{t}</option>)}
-                                                            </select>
+                                                            <label className="block text-sm font-medium mb-1">Team * <span className="font-normal text-gray-400">(Mehrfachauswahl)</span></label>
+                                                            <MultiSelect
+                                                                values={requestForm.team}
+                                                                options={myTeams}
+                                                                placeholder="–"
+                                                                accent="indigo"
+                                                                onChange={(vals) => setRequestForm({...requestForm, team: vals})}
+                                                                className="w-full border rounded-md p-2 text-sm" />
                                                         </div>
                                                     )}
                                                     {myTeams.length === 1 && (
@@ -3210,8 +3257,8 @@
                                                         </div>
                                                         <div className="text-xs text-gray-600 mt-0.5">
                                                             {r.kind === 'reschedule'
-                                                                ? <>{target ? `${target.team} ${eventTypes[target.type].label}` : 'Spiel'} → {formatISODate(r.proposed?.date)} {r.proposed?.time}{r.proposed?.field ? ` · ${fld?.name}` : ''}</>
-                                                                : <>{r.event.team} · {formatISODate(r.event.date || r.event.eventDate)}{r.event.dateEnd ? ` – ${formatISODate(r.event.dateEnd)}` : ''} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}</>}
+                                                                ? <>{target ? `${joinList(target.team)} ${eventTypes[target.type].label}` : 'Spiel'} → {formatISODate(r.proposed?.date)} {r.proposed?.time}{r.proposed?.field ? ` · ${fld?.name}` : ''}</>
+                                                                : <>{joinList(r.event.team)} · {formatISODate(r.event.date || r.event.eventDate)}{r.event.dateEnd ? ` – ${formatISODate(r.event.dateEnd)}` : ''} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}</>}
                                                         </div>
                                                         <div className="text-xs text-gray-400 mt-0.5">von {r.requestedByName}</div>
                                                         {r.note && <div className="text-xs text-gray-600 mt-1 italic">„{r.note}"</div>}
@@ -3257,7 +3304,7 @@
                         const ev = r.event || {};
                         const dateIso = r.kind === 'reschedule' ? (r.proposed && r.proposed.date) : (ev.date || ev.eventDate);
                         const time = r.kind === 'reschedule' ? (r.proposed && r.proposed.time) : ev.time;
-                        const teamName = r.kind === 'reschedule' ? (target && target.team) : ev.team;
+                        const teamName = joinList(r.kind === 'reschedule' ? (target && target.team) : ev.team);
                         const reqType = r.kind === 'reschedule' ? (target && target.type) : ev.type;
                         const isAwayReview = GAME_TYPES.includes(reqType) && (r.kind === 'reschedule' ? (target && target.venue === 'away') : (ev.venue === 'away'));
                         return (
@@ -3397,10 +3444,17 @@
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Team</label>
-                                            <select value={editingEvent.team} onChange={(e) => { const v = e.target.value; setEditingEvent({...editingEvent, team: v, trainer: trainerForTeam(v) || editingEvent.trainer}); }} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                                {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
+                                            <label className="block text-sm font-medium mb-1">Team <span className="font-normal text-gray-400">(Mehrfachauswahl)</span></label>
+                                            <MultiSelect
+                                                values={editingEvent.team}
+                                                options={[...new Set([...teams, ...asList(editingEvent.team)])]}
+                                                placeholder="Wählen"
+                                                accent="blue"
+                                                onChange={(vals) => {
+                                                    const auto = vals.map(trainerForTeam).filter(Boolean);
+                                                    setEditingEvent({...editingEvent, team: vals, trainer: [...new Set([...asList(editingEvent.trainer), ...auto])]});
+                                                }}
+                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                         </div>
                                         {GAME_TYPES.includes(editingEvent.type) && (
                                             <div>
@@ -3423,12 +3477,14 @@
                                             </div>
                                         )}
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Trainer</label>
-                                            <select value={editingEvent.trainer || ''} onChange={(e) => setEditingEvent({...editingEvent, trainer: e.target.value})} className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                                <option value="">Wählen</option>
-                                                {editingEvent.trainer && !trainerOptions.some(u => u.name === editingEvent.trainer) && <option value={editingEvent.trainer}>{editingEvent.trainer}</option>}
-                                                {trainerOptions.map(u => <option key={u.uid} value={u.name}>{u.name}</option>)}
-                                            </select>
+                                            <label className="block text-sm font-medium mb-1">Trainer <span className="font-normal text-gray-400">(Mehrfachauswahl)</span></label>
+                                            <MultiSelect
+                                                values={editingEvent.trainer}
+                                                options={[...new Set([...trainerOptions.map(u => u.name), ...asList(editingEvent.trainer)])]}
+                                                placeholder="Wählen"
+                                                accent="blue"
+                                                onChange={(vals) => setEditingEvent({...editingEvent, trainer: vals})}
+                                                className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                                         </div>
                                         {!(GAME_TYPES.includes(editingEvent.type) && editingEvent.venue === 'away') && (<>
                                         <div>
