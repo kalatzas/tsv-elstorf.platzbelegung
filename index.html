@@ -209,7 +209,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.39.1'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.39.2'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1935,7 +1935,7 @@
             return (
                 <div className={`app-shell h-screen flex flex-col ${previewMobile ? 'border-x border-gray-300 shadow-2xl' : ''}`} style={{ height: '100dvh', ...(previewMobile ? { maxWidth: '420px', margin: '0 auto' } : {}) }}>
                     {/* ===== FIXIERTER OBERER BEREICH ===== */}
-                    <div className="flex-shrink-0 bg-gray-50">
+                    <div className="flex-shrink-0 bg-gray-50" style={{ overflowY: 'auto', scrollbarGutter: 'stable' }}>
                         <div className="max-w-7xl mx-auto px-4 pt-4">
                     {/* Header */}
                     <div className="mb-4">
@@ -2090,7 +2090,7 @@
                     </div>
 
                     {/* ===== SCROLLBARER MITTELBEREICH ===== */}
-                    <div className="flex-1 overflow-y-auto print-overflow-visible">
+                    <div className="flex-1 overflow-y-auto print-overflow-visible" style={{ scrollbarGutter: 'stable' }}>
                         <div className="max-w-7xl mx-auto px-4 py-3">
 
                     {/* Ladeanzeige beim Start */}
