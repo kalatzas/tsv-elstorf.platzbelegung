@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.42.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.43.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -258,7 +258,7 @@
             const [showLoginModal, setShowLoginModal] = useState(false);
             const [showManagement, setShowManagement] = useState(false);
             const [managementTab, setManagementTab] = useState('users');
-            const emptyUserForm = { uid: '', firstName: '', lastName: '', email: '', password: '', role: 'trainer', teams: [] };
+            const emptyUserForm = { uid: '', firstName: '', lastName: '', email: '', password: '', role: 'trainer', teams: [], notifyEmail: true };
             const [userForm, setUserForm] = useState(emptyUserForm);
             const [loginEmail, setLoginEmail] = useState('');
             const [loginPassword, setLoginPassword] = useState('');
@@ -1386,7 +1386,7 @@
 
             // Benutzerkonto anlegen – über eine zweite Firebase-Instanz,
             // damit der angemeldete Admin nicht abgemeldet wird.
-            const createUserAccount = async ({ firstName, lastName, email, password, role, teams }) => {
+            const createUserAccount = async ({ firstName, lastName, email, password, role, teams, notifyEmail }) => {
                 const secondary = firebase.apps.find(a => a.name === 'secondary')
                     || firebase.initializeApp(firebaseConfig, 'secondary');
                 try {
@@ -1394,7 +1394,7 @@
                     const fn = firstName.trim(), ln = lastName.trim();
                     await db.collection('users').doc(cred.user.uid).set({
                         firstName: fn, lastName: ln, name: `${fn} ${ln}`.trim(),
-                        email: email.trim(), role, teams, createdAt: Date.now()
+                        email: email.trim(), role, teams, notifyEmail: notifyEmail !== false, createdAt: Date.now()
                     });
                     const uid = cred.user.uid;
                     await secondary.auth().signOut();
@@ -1417,7 +1417,7 @@
                     }
                     // Bestehenden Benutzer aktualisieren (Name, Rolle, Teams)
                     try {
-                        await db.collection('users').doc(f.uid).update({ firstName: fn, lastName: ln, name: fullName, role: f.role, teams: f.teams });
+                        await db.collection('users').doc(f.uid).update({ firstName: fn, lastName: ln, name: fullName, role: f.role, teams: f.teams, notifyEmail: f.notifyEmail !== false });
                         addNotification('Benutzer aktualisiert', 'success');
                         setUserForm(emptyUserForm);
                     } catch (e) {
@@ -2906,7 +2906,7 @@
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap gap-1.5 mt-2">
-                                                    <button onClick={() => setUserForm({ uid: u.uid, firstName: u.firstName || (u.name || '').split(' ')[0] || '', lastName: u.lastName || (u.name || '').split(' ').slice(1).join(' ') || '', email: u.email || '', password: '', role: u.role || 'trainer', teams: u.teams || [] })} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">Bearbeiten</button>
+                                                    <button onClick={() => setUserForm({ uid: u.uid, firstName: u.firstName || (u.name || '').split(' ')[0] || '', lastName: u.lastName || (u.name || '').split(' ').slice(1).join(' ') || '', email: u.email || '', password: '', role: u.role || 'trainer', teams: u.teams || [], notifyEmail: u.notifyEmail !== false })} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded">Bearbeiten</button>
                                                     <button onClick={() => sendUserPasswordReset(u.email)} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded">Passwort-Mail</button>
                                                     {u.uid !== authUser?.uid && <button onClick={() => deleteUserProfile(u)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">Entfernen</button>}
                                                 </div>
@@ -2959,6 +2959,10 @@
                                                 })}
                                             </div>
                                         </div>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer border rounded-md p-2">
+                                            <input type="checkbox" checked={userForm.notifyEmail !== false} onChange={(e) => setUserForm({...userForm, notifyEmail: e.target.checked})} className="w-4 h-4 accent-slate-600" />
+                                            <span>Benachrichtigungen auch per E-Mail</span>
+                                        </label>
                                         <div className="flex gap-2">
                                             <button onClick={saveUser} className="flex-1 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md text-sm transition-colors">{userForm.uid ? 'Speichern' : 'Benutzer anlegen'}</button>
                                             {userForm.uid && <button onClick={() => setUserForm(emptyUserForm)} className="bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>}
