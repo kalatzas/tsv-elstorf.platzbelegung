@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.41.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.42.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -347,6 +347,7 @@
             const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS);
             const [teams, setTeams] = useState(DEFAULT_TEAMS);
             const [newTeamName, setNewTeamName] = useState('');
+            const [teamEdits, setTeamEdits] = useState({});
             const [cabins, setCabins] = useState(DEFAULT_CABINS);
             const [newCabinName, setNewCabinName] = useState('');
             const [positions, setPositions] = useState(DEFAULT_POSITIONS);
@@ -1230,6 +1231,45 @@
                 }
                 commitTeams([...teams, n]);
                 setNewTeamName('');
+            };
+
+            // Team umbenennen: Reihenfolge & Farbe behalten, Termine und Benutzer mitziehen
+            const renameTeam = (oldName, newName, index) => {
+                const n = newName.trim();
+                if (!n || n === oldName) return;
+                if (teams.some((x, i) => i !== index && x.toLowerCase() === n.toLowerCase())) {
+                    addNotification('Dieses Team gibt es bereits', 'warning');
+                    return;
+                }
+                const nextTeams = teams.map((x, i) => i === index ? n : x);
+                commitTeams(nextTeams);
+                if (teamColors[oldName] !== undefined) {
+                    const nc = { ...teamColors };
+                    nc[n] = nc[oldName];
+                    delete nc[oldName];
+                    commitTeamColors(nc);
+                }
+                const touched = events.some(e => asList(e.team).includes(oldName));
+                if (touched) {
+                    commitEvents(events.map(e => {
+                        const tl = asList(e.team);
+                        return tl.includes(oldName) ? { ...e, team: tl.map(t => t === oldName ? n : t) } : e;
+                    }));
+                }
+                if (FIREBASE_READY) {
+                    const affected = allUsers.filter(u => Array.isArray(u.teams) && u.teams.includes(oldName));
+                    Promise.all(affected.map(u =>
+                        db.collection('users').doc(u.uid).update({ teams: u.teams.map(t => t === oldName ? n : t) })
+                    )).catch(() => addNotification('Trainer-Zuordnungen konnten nicht alle aktualisiert werden', 'warning'));
+                }
+                addNotification(`Team „${oldName}" umbenannt in „${n}"`, 'success');
+            };
+
+            const commitTeamRename = (index) => {
+                const raw = teamEdits[index];
+                setTeamEdits(prev => { const c = { ...prev }; delete c[index]; return c; });
+                if (raw === undefined) return;
+                renameTeam(teams[index], raw, index);
             };
 
             // Team in der Sortierreihenfolge verschieben (dir: -1 hoch, +1 runter)
@@ -2990,7 +3030,14 @@
                                                     onBlur={(e) => commitTeamColors({ ...teamColors, [t]: e.target.value })}
                                                     className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer shrink-0"
                                                 />
-                                                <span className="flex-1 text-sm font-medium text-gray-800 truncate">{t}</span>
+                                                <input
+                                                    type="text"
+                                                    value={teamEdits[i] !== undefined ? teamEdits[i] : t}
+                                                    onChange={(e) => setTeamEdits({ ...teamEdits, [i]: e.target.value })}
+                                                    onBlur={() => commitTeamRename(i)}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setTeamEdits(prev => { const c = { ...prev }; delete c[i]; return c; }); e.currentTarget.blur(); } }}
+                                                    className="flex-1 min-w-0 text-sm font-medium text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-slate-400 focus:bg-white focus:outline-none rounded px-2 py-1"
+                                                />
                                                 <button onClick={() => removeTeam(t)} title="Team entfernen" className="text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded px-2 py-1 shrink-0">Entfernen</button>
                                             </div>
                                         ))}
