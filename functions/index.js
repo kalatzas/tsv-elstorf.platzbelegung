@@ -286,19 +286,33 @@ function tmplEventDeleted(n, u, _appUrl) {
   });
 }
 
-// Wenn ein Pflichtspiel ein bestehendes Training überlagert, werden
-// die Trainer der verdrängten Einheit benachrichtigt — Pflichtspiele
-// haben Vorrang, das Training muss umgeplant werden.
+// Wenn ein Termin ein bestehendes Training überlagert, werden die
+// Trainer der verdrängten Einheit benachrichtigt. Pflichtspiele haben
+// echten Vorrang ("Pflichtspiel hat Vorrang"), bei anderen Terminarten
+// wurde der Konflikt vom Admin bewusst akzeptiert — die Wortwahl passt
+// sich entsprechend an.
 function tmplTrainingDisplaced(n, u, _appUrl) {
   const d = n.data || {};
   const subject = `Trainingstermin überschnitten: ${d.trainingTeam || ''}`.trim();
   const matchTimeEnd = d.matchTime && d.matchDuration
     ? `${d.matchTime}–${addHoursToTime(d.matchTime, d.matchDuration)} Uhr`
     : (d.matchTime ? `${d.matchTime} Uhr` : '');
+  const isPflichtspiel = d.displacerType === 'match';
+  const displacerLabel = d.displacerTypeLabel || (isPflichtspiel ? 'Pflichtspiel' : 'Termin');
+  const intro = isPflichtspiel
+    ? `${d.actorName || 'Ein Admin'} hat ein Pflichtspiel angelegt, das sich mit eurem Training überschneidet. Pflichtspiele haben Vorrang — bitte plant den Trainingstermin um.`
+    : `${d.actorName || 'Ein Admin'} hat einen Termin (${displacerLabel}) angelegt, der sich mit eurem Training überschneidet. Bitte plant den Trainingstermin um oder stimmt euch mit der Vereinsleitung ab.`;
+  const matchRows = [
+    d.matchTeam && ['Mannschaft', d.matchTeam],
+    d.matchOpponent && ['Gegner', d.matchOpponent],
+    d.matchDate && ['Datum', formatLongDate(d.matchDate)],
+    matchTimeEnd && ['Uhrzeit', matchTimeEnd],
+    d.matchFieldName && ['Platz', d.matchFieldName],
+  ];
   return renderEmail({
     subject,
     greeting: greet(u),
-    intro: `${d.actorName || 'Ein Admin'} hat ein Pflichtspiel angelegt, das sich mit eurem Training überschneidet. Pflichtspiele haben Vorrang — bitte plant den Trainingstermin um.`,
+    intro,
     sections: [
       {
         heading: 'Betroffenes Training',
@@ -311,14 +325,8 @@ function tmplTrainingDisplaced(n, u, _appUrl) {
         ],
       },
       {
-        heading: 'Verdrängt durch Pflichtspiel',
-        rows: [
-          d.matchTeam && ['Mannschaft', d.matchTeam],
-          d.matchOpponent && ['Gegner', d.matchOpponent],
-          d.matchDate && ['Datum', formatLongDate(d.matchDate)],
-          matchTimeEnd && ['Uhrzeit', matchTimeEnd],
-          d.matchFieldName && ['Platz', d.matchFieldName],
-        ],
+        heading: `Verdrängt durch ${displacerLabel}`,
+        rows: matchRows,
       },
     ],
   });

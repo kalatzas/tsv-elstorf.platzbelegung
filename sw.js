@@ -1,4 +1,4 @@
-const CACHE = 'platzplan-v3';
+const CACHE = 'platzplan-v4';
 const ASSETS = [
   'index.html',
   'manifest.json',

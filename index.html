@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.48.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.49.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1499,18 +1499,22 @@
                 });
             };
 
-            // Wenn ein Pflichtspiel über ein bestehendes Training gelegt wird,
-            // bekommen die Trainer der verdrängten Einheit eine Benachrichtigung.
-            // Das Training bleibt im System (Admin entscheidet wie übersteuert
-            // wurde), die Trainer wissen aber Bescheid, dass sie umplanen müssen.
-            const notifyTrainingsDisplacedByMatch = (matchEvent, excludeId) => {
-                if (!matchEvent || matchEvent.type !== 'match') return;
-                const conflicts = findConflicts(matchEvent)
+            // Wenn ein Termin auf einer bestehenden Trainingseinheit landet,
+            // werden die Trainer des verdraengten Trainings per Mail
+            // benachrichtigt. Triggert NICHT bei Training-auf-Training (das
+            // muessen die beteiligten Trainer untereinander klaeren) und nicht
+            // bei Platzsperren. Gibt die Liste der verdraengten Trainings
+            // zurueck, damit der Aufrufer einen Hinweis-Toast anzeigen kann.
+            const notifyTrainingsDisplaced = (candidate, excludeId) => {
+                if (!candidate || candidate.type === 'training' || candidate.type === 'blocked') return [];
+                const conflicts = findConflicts(candidate)
                     .filter(c => (excludeId == null || c.id !== excludeId))
                     .filter(c => c.type === 'training' && !c.cancelled);
-                if (conflicts.length === 0) return;
+                if (conflicts.length === 0) return [];
                 const actorName = userProfile?.name || 'Admin';
-                const matchFieldName = (fields.find(fl => fl.id === matchEvent.field) || {}).name || '';
+                const candidateFieldName = (fields.find(fl => fl.id === candidate.field) || {}).name || '';
+                const candidateType = eventTypes[candidate.type] || {};
+                const isPflichtspiel = candidate.type === 'match';
                 conflicts.forEach(t => {
                     const teams = asList(t.team);
                     const recipients = [...new Set(teams.flatMap(teamTrainerUids))];
@@ -1518,24 +1522,44 @@
                     const trainingFieldName = (fields.find(fl => fl.id === t.field) || {}).name || '';
                     pushNotification(recipients, {
                         type: 'training_displaced', title: 'Trainingstermin überschnitten',
-                        body: `${joinList(t.team)} Training am ${t.day}, ${t.time} Uhr wird durch ein Pflichtspiel verdrängt — bitte umplanen.`,
+                        body: `${joinList(t.team)} Training am ${t.day}, ${t.time} Uhr wird durch ${isPflichtspiel ? 'ein Pflichtspiel' : 'einen anderen Termin'} verdrängt — bitte umplanen.`,
                         data: {
                             actorName,
+                            displacerType: candidate.type || '',
+                            displacerTypeLabel: candidateType.label || '',
                             trainingTeam: joinList(t.team),
                             trainingDate: t.eventDate || t.date || '',
                             trainingDay: t.day || '',
                             trainingTime: t.time || '',
                             trainingDuration: t.duration || '',
                             trainingFieldName,
-                            matchTeam: joinList(matchEvent.team),
-                            matchOpponent: matchEvent.title || '',
-                            matchDate: matchEvent.eventDate || matchEvent.date || '',
-                            matchTime: matchEvent.time || '',
-                            matchDuration: matchEvent.duration || '',
-                            matchFieldName,
+                            matchTeam: joinList(candidate.team),
+                            matchOpponent: candidate.title || '',
+                            matchDate: candidate.eventDate || candidate.date || '',
+                            matchTime: candidate.time || '',
+                            matchDuration: candidate.duration || '',
+                            matchFieldName: candidateFieldName,
                         }
                     });
                 });
+                return conflicts;
+            };
+
+            // Nach einem Override: Admin kann das verdraengte Training direkt
+            // im Editor oeffnen ("Jetzt umplanen"), statt nur zu warten bis
+            // der Trainer reagiert. Mail an den Trainer geht in jedem Fall raus.
+            const promptDisplacedTrainings = (displaced) => {
+                if (!displaced || displaced.length === 0) return;
+                if (displaced.length === 1) {
+                    const t = displaced[0];
+                    addNotification(
+                        `${joinList(t.team)} Training (${t.day}, ${t.time}) verdrängt — Trainer benachrichtigt.`,
+                        'warning',
+                        { duration: 10000, action: { label: 'Jetzt umplanen', onClick: () => setEditingEvent({ ...t, date: toDateOnly(t.eventDate || t.date) }) } }
+                    );
+                } else {
+                    addNotification(`${displaced.length} Trainings verdrängt — Trainer wurden benachrichtigt.`, 'warning', { duration: 8000 });
+                }
             };
 
             const markInboxRead = () => {
@@ -1822,7 +1846,7 @@
                                 decidedBy: userProfile?.name || 'Admin'
                             }
                         });
-                        notifyTrainingsDisplacedByMatch(updated, target.id);
+                        promptDisplacedTrainings(notifyTrainingsDisplaced(updated, target.id));
                     };
                     const conf = findConflicts(updated).filter(c => c.id !== target.id);
                     const closConf = closuresForEvent(updated);
@@ -1866,6 +1890,8 @@
                                     decidedBy: userProfile?.name || 'Admin'
                                 }
                             });
+                            const displaced = dayEvents.flatMap(ev => notifyTrainingsDisplaced(ev));
+                            promptDisplacedTrainings(displaced);
                         };
                         const conf = dayEvents.flatMap(de => findConflicts(de));
                         const closConf = dayEvents.flatMap(de => closuresForEvent(de));
@@ -1898,7 +1924,7 @@
                                 decidedBy: userProfile?.name || 'Admin'
                             }
                         });
-                        notifyTrainingsDisplacedByMatch(newEv);
+                        promptDisplacedTrainings(notifyTrainingsDisplaced(newEv));
                     };
                     const conf = findConflicts(newEv);
                     const closConf = closuresForEvent(newEv);
@@ -2047,11 +2073,12 @@
                     if (isSeries) {
                         commitEvents([...events, ...seriesEvents]);
                         addNotification(`${seriesEvents.length} Serientermine erstellt`, 'success');
-                        seriesEvents.forEach(ev => notifyTrainingsDisplacedByMatch(ev));
+                        const displaced = seriesEvents.flatMap(ev => notifyTrainingsDisplaced(ev));
+                        promptDisplacedTrainings(displaced);
                     } else {
                         commitEvents([...events, singleEvent]);
                         addNotification('Termin hinzugefügt', 'success');
-                        notifyTrainingsDisplacedByMatch(singleEvent);
+                        promptDisplacedTrainings(notifyTrainingsDisplaced(singleEvent));
                     }
                     setNewEvent(emptyNewEvent);
                     setShowAddModal(false);
@@ -2083,7 +2110,7 @@
                     commitEvents(events.map(e => e.id === editingEvent.id ? updated : e));
                     setEditingEvent(null);
                     addNotification('Termin aktualisiert', 'success');
-                    notifyTrainingsDisplacedByMatch(updated, editingEvent.id);
+                    promptDisplacedTrainings(notifyTrainingsDisplaced(updated, editingEvent.id));
                 };
 
                 const eventConflicts = findConflicts(updated);
