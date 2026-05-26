@@ -1440,13 +1440,15 @@
                         addNotification('Benutzer angelegt', 'success');
                         // Willkommens-Benachrichtigung (wird per Cloud Function auch als E-Mail versendet)
                         if (res.uid) {
+                            const roleLabel = ROLE_LABELS[f.role] || f.role;
                             await db.collection('notifications').add({
                                 recipientUid: res.uid, createdBy: authUser.uid, read: false, createdAt: Date.now(),
                                 type: 'welcome', title: 'Willkommen beim Platzbelegungsplaner',
                                 body: `Hallo ${fn},\n\nfür dich wurde ein Zugang zum Platzbelegungsplaner des TSV Elstorf angelegt.\n\n`
-                                    + `E-Mail zum Anmelden: ${f.email.trim()}\nRolle: ${ROLE_LABELS[f.role] || f.role}\n\n`
+                                    + `E-Mail zum Anmelden: ${f.email.trim()}\nRolle: ${roleLabel}\n\n`
                                     + `Das Start-Passwort teilt dir der Administrator persönlich mit. `
-                                    + `Du kannst es nach dem ersten Login jederzeit über „Passwort vergessen" zurücksetzen.`
+                                    + `Du kannst es nach dem ersten Login jederzeit über „Passwort vergessen" zurücksetzen.`,
+                                data: { email: f.email.trim(), roleLabel }
                             }).catch((e) => console.error('Willkommens-Benachrichtigung fehlgeschlagen:', e));
                         }
                         setUserForm(emptyUserForm);
@@ -1532,9 +1534,19 @@
                         ? { ...e, cancelled: true, cancelledBy: userProfile?.name || 'Admin', cancelledAt: Date.now() }
                         : e));
                     addNotification('Einheit abgesagt', 'info');
+                    const actorName = userProfile?.name || 'Admin';
                     pushNotification(canEdit ? [...new Set(asList(event.team).flatMap(teamTrainerUids))] : adminUids(), {
                         type: 'event_cancelled', title: 'Einheit fällt aus',
-                        body: `${joinList(event.team)} Training am ${event.day}, ${event.time} Uhr fällt aus (${userProfile?.name || 'Admin'}).`
+                        body: `${joinList(event.team)} Training am ${event.day}, ${event.time} Uhr fällt aus (${actorName}).`,
+                        data: {
+                            team: joinList(event.team),
+                            eventTypeLabel: eventTypes[event.type]?.label || '',
+                            date: event.eventDate || event.date || '',
+                            day: event.day || '',
+                            time: event.time || '',
+                            fieldName: (fields.find(f => f.id === event.field) || {}).name || '',
+                            actorName
+                        }
                     });
                 });
             };
@@ -1555,9 +1567,19 @@
                     const previous = events;
                     commitEvents(events.filter(e => e.id !== event.id));
                     addNotification('Einheit gelöscht', 'info', { duration: 7000, action: { label: 'Rückgängig', onClick: () => { commitEvents(previous); addNotification('Einheit wiederhergestellt', 'success'); } } });
+                    const actorName = userProfile?.name || 'Admin';
                     pushNotification(canEdit ? [...new Set(asList(event.team).flatMap(teamTrainerUids))] : adminUids(), {
                         type: 'event_deleted', title: 'Einheit gelöscht',
-                        body: `${joinList(event.team)} Training am ${event.day}, ${event.time} Uhr wurde gelöscht (${userProfile?.name || 'Admin'}).`
+                        body: `${joinList(event.team)} Training am ${event.day}, ${event.time} Uhr wurde gelöscht (${actorName}).`,
+                        data: {
+                            team: joinList(event.team),
+                            eventTypeLabel: eventTypes[event.type]?.label || '',
+                            date: event.eventDate || event.date || '',
+                            day: event.day || '',
+                            time: event.time || '',
+                            fieldName: (fields.find(f => f.id === event.field) || {}).name || '',
+                            actorName
+                        }
                     });
                 });
             };
@@ -1609,9 +1631,54 @@
                 try {
                     await db.collection('requests').add(payload);
                     addNotification('Antrag eingereicht', 'success');
+                    // Strukturierte Daten für E-Mail-Templates aufbereiten.
+                    // Reschedule referenziert das Zielspiel; neue Anträge
+                    // haben alle Termin-Infos im event-Subobjekt.
+                    const requestTypeLabel = requestTypeOptions[f.type] || f.type;
+                    let mailData;
+                    if (f.type === 'reschedule') {
+                        const target = events.find(e => String(e.id) === String(f.targetEventId)) || {};
+                        const proposedFieldId = f.proposedField || target.field || '';
+                        mailData = {
+                            requestTypeLabel,
+                            requesterName: userProfile.name,
+                            requesterEmail: userProfile.email || authUser.email || '',
+                            team: joinList(target.team),
+                            opponent: target.title || '',
+                            date: f.proposedDate,
+                            time: f.proposedTime,
+                            duration: target.duration || '',
+                            fieldName: (fields.find(fl => fl.id === proposedFieldId) || {}).name || '',
+                            oldDate: target.eventDate || target.date || '',
+                            oldTime: target.time || '',
+                            note: f.note.trim()
+                        };
+                    } else {
+                        const ev = payload.event || {};
+                        mailData = {
+                            requestTypeLabel,
+                            requesterName: userProfile.name,
+                            requesterEmail: userProfile.email || authUser.email || '',
+                            team: joinList(ev.team),
+                            opponent: ev.title || '',
+                            date: ev.date,
+                            dateEnd: ev.dateEnd || '',
+                            time: ev.time,
+                            duration: ev.duration || '',
+                            fieldName: (fields.find(fl => fl.id === ev.field) || {}).name || '',
+                            note: f.note.trim()
+                        };
+                    }
                     pushNotification(adminUids(), {
                         type: 'request_new', title: 'Neuer Antrag',
-                        body: `${userProfile.name}: ${requestTypeOptions[f.type] || f.type}`
+                        body: `${userProfile.name}: ${requestTypeLabel}`,
+                        data: mailData
+                    });
+                    // Eingangsbestätigung an den Antragsteller selbst.
+                    pushNotification([authUser.uid], {
+                        type: 'request_received', title: 'Antrag eingegangen',
+                        body: `Dein Antrag „${requestTypeLabel}" liegt den Admins zur Prüfung vor.`,
+                        data: mailData
                     });
                     setRequestForm(emptyRequestForm);
                 } catch (e) {
@@ -1629,12 +1696,29 @@
             // Zwischenschritt einer Spielverlegung: DFBNet-Antrag wurde gestellt
             const markDfbnetSubmitted = (req) => {
                 if (!canManageRequests || !req) return;
+                const decidedBy = userProfile?.name || 'Admin';
                 db.collection('requests').doc(req.id).update({
-                    status: 'dfbnet', dfbnetBy: userProfile?.name || 'Admin', dfbnetAt: Date.now()
+                    status: 'dfbnet', dfbnetBy: decidedBy, dfbnetAt: Date.now()
                 }).then(() => {
                     addNotification('DFBNet-Antrag vermerkt', 'info');
-                    pushNotification([req.requestedBy], { type: 'request_update', title: 'DFBNet-Antrag gestellt',
-                        body: 'Für deine Spielverlegung wurde der DFBNet-Antrag gestellt. Die Freigabe erfolgt nach DFBNet-Bestätigung.' });
+                    const target = events.find(e => String(e.id) === String(req.targetEventId)) || {};
+                    const proposed = req.proposed || {};
+                    const fieldId = proposed.field || target.field || '';
+                    pushNotification([req.requestedBy], {
+                        type: 'request_update', title: 'DFBNet-Antrag gestellt',
+                        body: 'Für deine Spielverlegung wurde der DFBNet-Antrag gestellt. Die Freigabe erfolgt nach DFBNet-Bestätigung.',
+                        data: {
+                            requestTypeLabel: 'Spielverlegung',
+                            team: joinList(target.team),
+                            opponent: target.title || '',
+                            date: proposed.date || '',
+                            time: proposed.time || '',
+                            fieldName: (fields.find(fl => fl.id === fieldId) || {}).name || '',
+                            oldDate: target.eventDate || target.date || '',
+                            oldTime: target.time || '',
+                            decidedBy
+                        }
+                    });
                 }).catch(() => addNotification('Antrag konnte nicht aktualisiert werden', 'warning'));
             };
 
@@ -1677,8 +1761,21 @@
                         finishRequest(req, 'approved');
                         setRequestReviewTarget(null);
                         addNotification('Verlegung genehmigt', 'success');
-                        pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
-                            body: `Deine Spielverlegung wurde genehmigt: ${joinList(updated.team)} jetzt ${formatISODate(p.date)} ${updated.time} Uhr.` });
+                        pushNotification([req.requestedBy], {
+                            type: 'request_approved', title: 'Antrag genehmigt',
+                            body: `Deine Spielverlegung wurde genehmigt: ${joinList(updated.team)} jetzt ${formatISODate(p.date)} ${updated.time} Uhr.`,
+                            data: {
+                                requestTypeLabel: 'Spielverlegung',
+                                team: joinList(updated.team),
+                                opponent: updated.title || '',
+                                date: updated.eventDate || updated.date || p.date || '',
+                                time: updated.time || '',
+                                fieldName: (fields.find(fl => fl.id === updated.field) || {}).name || '',
+                                oldDate: target.eventDate || target.date || '',
+                                oldTime: target.time || '',
+                                decidedBy: userProfile?.name || 'Admin'
+                            }
+                        });
                     };
                     const conf = findConflicts(updated).filter(c => c.id !== target.id);
                     const closConf = closuresForEvent(updated);
@@ -1706,8 +1803,21 @@
                             finishRequest(req, 'approved');
                             setRequestReviewTarget(null);
                             addNotification(`Trainingslager genehmigt – ${dayEvents.length} Termine angelegt`, 'success');
-                            pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
-                                body: `Dein Trainingslager (${formatISODate(iso)} – ${formatISODate(ev.dateEnd)}) wurde genehmigt.` });
+                            const fieldId = field || ev.field || '';
+                            pushNotification([req.requestedBy], {
+                                type: 'request_approved', title: 'Antrag genehmigt',
+                                body: `Dein Trainingslager (${formatISODate(iso)} – ${formatISODate(ev.dateEnd)}) wurde genehmigt.`,
+                                data: {
+                                    requestTypeLabel: requestTypeOptions[req.type] || req.type,
+                                    team: joinList(ev.team),
+                                    date: iso,
+                                    dateEnd: ev.dateEnd || '',
+                                    time: ev.time || '',
+                                    duration: ev.duration || '',
+                                    fieldName: (fields.find(fl => fl.id === fieldId) || {}).name || '',
+                                    decidedBy: userProfile?.name || 'Admin'
+                                }
+                            });
                         };
                         const conf = dayEvents.flatMap(de => findConflicts(de));
                         const closConf = dayEvents.flatMap(de => closuresForEvent(de));
@@ -1725,8 +1835,20 @@
                         finishRequest(req, 'approved');
                         setRequestReviewTarget(null);
                         addNotification('Antrag genehmigt – Termin angelegt', 'success');
-                        pushNotification([req.requestedBy], { type: 'request_approved', title: 'Antrag genehmigt',
-                            body: `Dein Antrag „${requestTypeOptions[req.type] || req.type}" wurde genehmigt und der Termin angelegt.` });
+                        pushNotification([req.requestedBy], {
+                            type: 'request_approved', title: 'Antrag genehmigt',
+                            body: `Dein Antrag „${requestTypeOptions[req.type] || req.type}" wurde genehmigt und der Termin angelegt.`,
+                            data: {
+                                requestTypeLabel: requestTypeOptions[req.type] || req.type,
+                                team: joinList(newEv.team),
+                                opponent: newEv.title || '',
+                                date: newEv.eventDate || iso || '',
+                                time: newEv.time || '',
+                                duration: newEv.duration || '',
+                                fieldName: (fields.find(fl => fl.id === newEv.field) || {}).name || '',
+                                decidedBy: userProfile?.name || 'Admin'
+                            }
+                        });
                     };
                     const conf = findConflicts(newEv);
                     const closConf = closuresForEvent(newEv);
@@ -1739,8 +1861,47 @@
                 if (!canManageRequests) return;
                 finishRequest(req, 'rejected', note);
                 addNotification('Antrag abgelehnt', 'info');
-                pushNotification([req.requestedBy], { type: 'request_rejected', title: 'Antrag abgelehnt',
-                    body: `Dein Antrag „${requestTypeOptions[req.type] || req.type}" wurde abgelehnt.${note && note.trim() ? ' Grund: ' + note.trim() : ''}` });
+                const cleanNote = note && note.trim() ? note.trim() : '';
+                const requestTypeLabel = requestTypeOptions[req.type] || req.type;
+                // Antragsdaten aus dem ursprünglichen Antrag rekonstruieren
+                // — bei Spielverlegung kommen Mannschaft/Spiel aus dem Zielspiel.
+                let mailData;
+                if (req.kind === 'reschedule') {
+                    const target = events.find(e => String(e.id) === String(req.targetEventId)) || {};
+                    const p = req.proposed || {};
+                    const fieldId = p.field || target.field || '';
+                    mailData = {
+                        requestTypeLabel,
+                        team: joinList(target.team),
+                        opponent: target.title || '',
+                        date: p.date || '',
+                        time: p.time || '',
+                        fieldName: (fields.find(fl => fl.id === fieldId) || {}).name || '',
+                        oldDate: target.eventDate || target.date || '',
+                        oldTime: target.time || '',
+                        adminNote: cleanNote,
+                        decidedBy: userProfile?.name || 'Admin'
+                    };
+                } else {
+                    const ev = req.event || {};
+                    mailData = {
+                        requestTypeLabel,
+                        team: joinList(ev.team),
+                        opponent: ev.title || '',
+                        date: ev.date || '',
+                        dateEnd: ev.dateEnd || '',
+                        time: ev.time || '',
+                        duration: ev.duration || '',
+                        fieldName: (fields.find(fl => fl.id === ev.field) || {}).name || '',
+                        adminNote: cleanNote,
+                        decidedBy: userProfile?.name || 'Admin'
+                    };
+                }
+                pushNotification([req.requestedBy], {
+                    type: 'request_rejected', title: 'Antrag abgelehnt',
+                    body: `Dein Antrag „${requestTypeLabel}" wurde abgelehnt.${cleanNote ? ' Grund: ' + cleanNote : ''}`,
+                    data: mailData
+                });
                 setRejectTarget(null);
                 setRejectNote('');
                 setRequestReviewTarget(null);
