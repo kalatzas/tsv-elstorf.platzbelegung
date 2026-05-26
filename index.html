@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.50.1'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.51.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1390,6 +1390,49 @@
 
             // App-eigener Bestätigungsdialog statt window.confirm
             const askConfirm = (message, onConfirm) => setConfirmDialog({ message, onConfirm });
+
+            // Komplett-Reset: leert Termine, Antraege (= History) und alle
+            // Inbox-Benachrichtigungen. Nur fuer Admins, mit Doppel-Bestaetigung.
+            // Stammdaten (Mannschaften, Plaetze, Trainer, Farben, Sperren)
+            // bleiben unangetastet.
+            const resetAllData = async () => {
+                if (!isAdmin) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
+                if (!FIREBASE_READY) { addNotification('Reset benötigt eine Cloud-Verbindung.', 'warning'); return; }
+                try {
+                    commitEvents([]);
+                    localStorage.removeItem('football-events');
+                    const wipeCollection = async (name) => {
+                        const snap = await db.collection(name).get();
+                        let batch = db.batch();
+                        let count = 0;
+                        for (const doc of snap.docs) {
+                            batch.delete(doc.ref);
+                            count++;
+                            if (count % 400 === 0) { await batch.commit(); batch = db.batch(); }
+                        }
+                        if (count % 400 !== 0) await batch.commit();
+                        return snap.size;
+                    };
+                    const [reqCount, notifCount] = await Promise.all([
+                        wipeCollection('requests'),
+                        wipeCollection('notifications'),
+                    ]);
+                    addNotification(`Reset fertig: Termine, ${reqCount} Antrag/Anträge & ${notifCount} Benachrichtigung(en) gelöscht.`, 'success', { duration: 8000 });
+                } catch (e) {
+                    console.error('Reset fehlgeschlagen:', e);
+                    addNotification('Reset fehlgeschlagen: ' + (e?.message || e), 'warning');
+                }
+            };
+
+            const startResetAllData = () => {
+                if (!isAdmin) { addNotification('Dafür fehlt dir die Berechtigung.', 'warning'); return; }
+                setShowExportModal(false);
+                askConfirm('ACHTUNG: Alle Termine, ALLE Anträge (auch erledigte = History) und ALLE Benachrichtigungen werden unwiderruflich gelöscht. Stammdaten (Mannschaften, Plätze, Trainer, Sperren) bleiben erhalten. Fortfahren?', () => {
+                    askConfirm('Wirklich endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.', () => {
+                        resetAllData();
+                    });
+                });
+            };
 
             const handleLogin = () => {
                 if (!FIREBASE_READY) {
@@ -4032,8 +4075,13 @@
                                     </button>
                                     <hr className="my-2" />
                                     <button onClick={() => { if(!requireEditor()) { setShowExportModal(false); return; } setShowExportModal(false); askConfirm('Wirklich ALLE Termine löschen?', () => { const previous = events; commitEvents([]); localStorage.removeItem('football-events'); addNotification('Alle Termine gelöscht', 'info', { duration: 7000, action: { label: 'Rückgängig', onClick: () => { commitEvents(previous); addNotification('Termine wiederhergestellt', 'success'); } } }); }); }} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
-                                        <Icon name="trash" /> Alles löschen
+                                        <Icon name="trash" /> Alle Termine löschen
                                     </button>
+                                    {isAdmin && (
+                                        <button onClick={startResetAllData} className="w-full bg-red-800 hover:bg-red-900 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                                            <Icon name="alert" /> Komplett-Reset (Termine + Anträge + Benachrichtigungen)
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
