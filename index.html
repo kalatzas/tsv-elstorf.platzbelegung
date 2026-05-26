@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.47.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.48.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -367,7 +367,7 @@
             const [seriesDeleteTarget, setSeriesDeleteTarget] = useState(null);
             const [rejectTarget, setRejectTarget] = useState(null);
             const [rejectNote, setRejectNote] = useState('');
-            const emptyRequestForm = { type: 'friendly', team: [], field: '', date: '', dateEnd: '', time: '', duration: 1.5, title: '', note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
+            const emptyRequestForm = { type: 'friendly', team: [], field: '', date: '', dateEnd: '', time: '', duration: 1.5, title: '', cabinCount: 0, note: '', targetEventId: '', proposedDate: '', proposedTime: '', proposedField: '' };
             const [requestForm, setRequestForm] = useState(emptyRequestForm);
             const [requestReviewTarget, setRequestReviewTarget] = useState(null);
             const [reviewForm, setReviewForm] = useState({ field: '', cabin: [], position: '' });
@@ -1499,6 +1499,45 @@
                 });
             };
 
+            // Wenn ein Pflichtspiel über ein bestehendes Training gelegt wird,
+            // bekommen die Trainer der verdrängten Einheit eine Benachrichtigung.
+            // Das Training bleibt im System (Admin entscheidet wie übersteuert
+            // wurde), die Trainer wissen aber Bescheid, dass sie umplanen müssen.
+            const notifyTrainingsDisplacedByMatch = (matchEvent, excludeId) => {
+                if (!matchEvent || matchEvent.type !== 'match') return;
+                const conflicts = findConflicts(matchEvent)
+                    .filter(c => (excludeId == null || c.id !== excludeId))
+                    .filter(c => c.type === 'training' && !c.cancelled);
+                if (conflicts.length === 0) return;
+                const actorName = userProfile?.name || 'Admin';
+                const matchFieldName = (fields.find(fl => fl.id === matchEvent.field) || {}).name || '';
+                conflicts.forEach(t => {
+                    const teams = asList(t.team);
+                    const recipients = [...new Set(teams.flatMap(teamTrainerUids))];
+                    if (recipients.length === 0) return;
+                    const trainingFieldName = (fields.find(fl => fl.id === t.field) || {}).name || '';
+                    pushNotification(recipients, {
+                        type: 'training_displaced', title: 'Trainingstermin überschnitten',
+                        body: `${joinList(t.team)} Training am ${t.day}, ${t.time} Uhr wird durch ein Pflichtspiel verdrängt — bitte umplanen.`,
+                        data: {
+                            actorName,
+                            trainingTeam: joinList(t.team),
+                            trainingDate: t.eventDate || t.date || '',
+                            trainingDay: t.day || '',
+                            trainingTime: t.time || '',
+                            trainingDuration: t.duration || '',
+                            trainingFieldName,
+                            matchTeam: joinList(matchEvent.team),
+                            matchOpponent: matchEvent.title || '',
+                            matchDate: matchEvent.eventDate || matchEvent.date || '',
+                            matchTime: matchEvent.time || '',
+                            matchDuration: matchEvent.duration || '',
+                            matchFieldName,
+                        }
+                    });
+                });
+            };
+
             const markInboxRead = () => {
                 if (!FIREBASE_READY) return;
                 unreadInbox.forEach((n) => {
@@ -1545,6 +1584,7 @@
                             day: event.day || '',
                             time: event.time || '',
                             fieldName: (fields.find(f => f.id === event.field) || {}).name || '',
+                            cabins: cabinText(event.cabin),
                             actorName
                         }
                     });
@@ -1578,6 +1618,7 @@
                             day: event.day || '',
                             time: event.time || '',
                             fieldName: (fields.find(f => f.id === event.field) || {}).name || '',
+                            cabins: cabinText(event.cabin),
                             actorName
                         }
                     });
@@ -1625,7 +1666,8 @@
                         date: f.date, day: dateToWeekday(f.date),
                         dateEnd: f.type === 'camp' ? f.dateEnd : '',
                         time: f.time, duration: f.duration || 1.5, title: f.title.trim(),
-                        cabin: [], trainer: [userProfile.name], position: ''
+                        cabin: [], cabinCount: f.cabinCount || 0,
+                        trainer: [userProfile.name], position: ''
                     } };
                 }
                 try {
@@ -1649,6 +1691,7 @@
                             time: f.proposedTime,
                             duration: target.duration || '',
                             fieldName: (fields.find(fl => fl.id === proposedFieldId) || {}).name || '',
+                            cabins: cabinText(target.cabin),
                             oldDate: target.eventDate || target.date || '',
                             oldTime: target.time || '',
                             note: f.note.trim()
@@ -1666,6 +1709,7 @@
                             time: ev.time,
                             duration: ev.duration || '',
                             fieldName: (fields.find(fl => fl.id === ev.field) || {}).name || '',
+                            cabinCount: ev.cabinCount || 0,
                             note: f.note.trim()
                         };
                     }
@@ -1714,6 +1758,7 @@
                             date: proposed.date || '',
                             time: proposed.time || '',
                             fieldName: (fields.find(fl => fl.id === fieldId) || {}).name || '',
+                            cabins: cabinText(target.cabin),
                             oldDate: target.eventDate || target.date || '',
                             oldTime: target.time || '',
                             decidedBy
@@ -1771,11 +1816,13 @@
                                 date: updated.eventDate || updated.date || p.date || '',
                                 time: updated.time || '',
                                 fieldName: (fields.find(fl => fl.id === updated.field) || {}).name || '',
+                                cabins: cabinText(updated.cabin),
                                 oldDate: target.eventDate || target.date || '',
                                 oldTime: target.time || '',
                                 decidedBy: userProfile?.name || 'Admin'
                             }
                         });
+                        notifyTrainingsDisplacedByMatch(updated, target.id);
                     };
                     const conf = findConflicts(updated).filter(c => c.id !== target.id);
                     const closConf = closuresForEvent(updated);
@@ -1815,6 +1862,7 @@
                                     time: ev.time || '',
                                     duration: ev.duration || '',
                                     fieldName: (fields.find(fl => fl.id === fieldId) || {}).name || '',
+                                    cabins: cabinText(cabin),
                                     decidedBy: userProfile?.name || 'Admin'
                                 }
                             });
@@ -1846,9 +1894,11 @@
                                 time: newEv.time || '',
                                 duration: newEv.duration || '',
                                 fieldName: (fields.find(fl => fl.id === newEv.field) || {}).name || '',
+                                cabins: cabinText(newEv.cabin),
                                 decidedBy: userProfile?.name || 'Admin'
                             }
                         });
+                        notifyTrainingsDisplacedByMatch(newEv);
                     };
                     const conf = findConflicts(newEv);
                     const closConf = closuresForEvent(newEv);
@@ -1877,6 +1927,7 @@
                         date: p.date || '',
                         time: p.time || '',
                         fieldName: (fields.find(fl => fl.id === fieldId) || {}).name || '',
+                        cabins: cabinText(target.cabin),
                         oldDate: target.eventDate || target.date || '',
                         oldTime: target.time || '',
                         adminNote: cleanNote,
@@ -1893,6 +1944,7 @@
                         time: ev.time || '',
                         duration: ev.duration || '',
                         fieldName: (fields.find(fl => fl.id === ev.field) || {}).name || '',
+                        cabinCount: ev.cabinCount || 0,
                         adminNote: cleanNote,
                         decidedBy: userProfile?.name || 'Admin'
                     };
@@ -1995,9 +2047,11 @@
                     if (isSeries) {
                         commitEvents([...events, ...seriesEvents]);
                         addNotification(`${seriesEvents.length} Serientermine erstellt`, 'success');
+                        seriesEvents.forEach(ev => notifyTrainingsDisplacedByMatch(ev));
                     } else {
                         commitEvents([...events, singleEvent]);
                         addNotification('Termin hinzugefügt', 'success');
+                        notifyTrainingsDisplacedByMatch(singleEvent);
                     }
                     setNewEvent(emptyNewEvent);
                     setShowAddModal(false);
@@ -2029,6 +2083,7 @@
                     commitEvents(events.map(e => e.id === editingEvent.id ? updated : e));
                     setEditingEvent(null);
                     addNotification('Termin aktualisiert', 'success');
+                    notifyTrainingsDisplacedByMatch(updated, editingEvent.id);
                 };
 
                 const eventConflicts = findConflicts(updated);
@@ -3469,6 +3524,13 @@
                                                             <input type="text" value={requestForm.title} onChange={(e) => setRequestForm({...requestForm, title: e.target.value})} className="w-full border rounded-md p-2 text-sm" placeholder={requestForm.type === 'friendly' ? 'z. B. SV Beispiel' : 'z. B. Pfingstturnier'} />
                                                         </div>
                                                     )}
+                                                    <div>
+                                                        <label className="block text-sm font-medium mb-1">Anzahl Kabinen</label>
+                                                        <select value={requestForm.cabinCount} onChange={(e) => setRequestForm({...requestForm, cabinCount: parseInt(e.target.value, 10) || 0})} className="w-full border rounded-md p-2 text-sm">
+                                                            {[0, 1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                                                        </select>
+                                                        <p className="text-xs text-gray-500 mt-1">Konkrete Kabinen werden bei der Genehmigung zugeteilt.</p>
+                                                    </div>
                                                 </>
                                             )}
                                             <div>
@@ -3498,7 +3560,7 @@
                                                         <div className="text-xs text-gray-600 mt-0.5">
                                                             {r.kind === 'reschedule'
                                                                 ? <>{target ? `${joinList(target.team)} ${eventTypes[target.type].label}` : 'Spiel'} → {formatISODate(r.proposed?.date)} {r.proposed?.time}{r.proposed?.field ? ` · ${fld?.name}` : ''}</>
-                                                                : <>{joinList(r.event.team)} · {formatISODate(r.event.date || r.event.eventDate)}{r.event.dateEnd ? ` – ${formatISODate(r.event.dateEnd)}` : ''} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}</>}
+                                                                : <>{joinList(r.event.team)} · {formatISODate(r.event.date || r.event.eventDate)}{r.event.dateEnd ? ` – ${formatISODate(r.event.dateEnd)}` : ''} {r.event.time}{r.event.field ? ` · ${fields.find(f => f.id === r.event.field)?.name}` : ''}{r.event.title ? ` · ${r.event.title}` : ''}{r.event.cabinCount > 0 ? ` · ${r.event.cabinCount} Kabine${r.event.cabinCount === 1 ? '' : 'n'}` : ''}</>}
                                                         </div>
                                                         <div className="text-xs text-gray-400 mt-0.5">von {r.requestedByName}</div>
                                                         {r.note && <div className="text-xs text-gray-600 mt-1 italic">„{r.note}"</div>}
@@ -3580,7 +3642,12 @@
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">Kabinen zuweisen</label>
+                                            <label className="block text-sm font-medium mb-1">
+                                                Kabinen zuweisen
+                                                {r.kind !== 'reschedule' && r.event && r.event.cabinCount > 0 && (
+                                                    <span className="ml-2 text-xs font-normal text-gray-500">(Antragsteller wünscht {r.event.cabinCount})</span>
+                                                )}
+                                            </label>
                                             <div className="grid grid-cols-2 gap-1.5">
                                                 {cabins.map(c => {
                                                     const checked = (reviewForm.cabin || []).includes(c);

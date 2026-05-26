@@ -38,6 +38,7 @@ const MAIL_TYPES = new Set([
   'request_update',
   'event_cancelled',
   'event_deleted',
+  'training_displaced',
   'welcome',
 ]);
 
@@ -79,14 +80,24 @@ function firstName(u) {
 
 // Baut HTML + Plaintext aus strukturierten Bausteinen, damit jede
 // Template-Funktion sich nur um die Inhalte kümmert.
-function renderEmail({ subject, greeting, intro, rows, notes, footer, cta }) {
+// `sections` rendert mehrere Tabellen mit Zwischenüberschriften
+// (z. B. bei der Konflikt-Mail "Betroffenes Training" + "Verdrängt durch").
+function renderEmail({ subject, greeting, intro, rows, sections, notes, footer, cta }) {
   const cleanRows = (rows || []).filter((r) => Array.isArray(r) && r[1] != null && r[1] !== '');
+  const cleanSections = (sections || []).map((s) => ({
+    heading: s.heading || '',
+    rows: (s.rows || []).filter((r) => Array.isArray(r) && r[1] != null && r[1] !== ''),
+  })).filter((s) => s.rows.length > 0);
   const cleanNotes = (notes || []).filter((n) => n && n.text);
 
-  const hRows = cleanRows.map(([label, value]) => `<tr>
+  const rowsToHtml = (rs) => rs.map(([label, value]) => `<tr>
       <td style="padding:6px 18px 6px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap">${escapeHtml(label)}</td>
       <td style="padding:6px 0;font-size:14px;color:#111">${escapeHtml(value)}</td>
     </tr>`).join('');
+  const hRows = rowsToHtml(cleanRows);
+  const hSections = cleanSections.map((s) => `${s.heading
+    ? `<p style="margin:18px 0 4px;font-size:13px;color:#555;font-weight:600">${escapeHtml(s.heading)}</p>`
+    : ''}<table style="border-collapse:collapse;margin:4px 0">${rowsToHtml(s.rows)}</table>`).join('');
   const hNotes = cleanNotes.map((n) => `<div style="margin:16px 0;padding:12px 14px;background:#f7f7f5;border-left:3px solid #15803d;border-radius:4px">
       <div style="font-size:12px;color:#666;margin-bottom:4px">${escapeHtml(n.label)}</div>
       <div style="font-size:14px;color:#111;white-space:pre-wrap">${escapeHtml(n.text)}</div>
@@ -102,6 +113,7 @@ function renderEmail({ subject, greeting, intro, rows, notes, footer, cta }) {
     ${greeting ? `<p style="margin:0 0 12px;font-size:14px">${escapeHtml(greeting)}</p>` : ''}
     ${intro ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5">${escapeHtml(intro)}</p>` : ''}
     ${hRows ? `<table style="border-collapse:collapse;margin:8px 0">${hRows}</table>` : ''}
+    ${hSections}
     ${hNotes}
     ${hFooter}
     ${hCta}
@@ -115,6 +127,11 @@ function renderEmail({ subject, greeting, intro, rows, notes, footer, cta }) {
   if (intro) tLines.push(intro, '');
   cleanRows.forEach(([l, v]) => tLines.push(`  ${String(l).padEnd(14)}${v}`));
   if (cleanRows.length) tLines.push('');
+  cleanSections.forEach((s) => {
+    if (s.heading) tLines.push(s.heading, '');
+    s.rows.forEach(([l, v]) => tLines.push(`  ${String(l).padEnd(14)}${v}`));
+    tLines.push('');
+  });
   cleanNotes.forEach((n) => { tLines.push(`${n.label}:`, n.text, ''); });
   if (footer) tLines.push(footer, '');
   if (cta && cta.url) tLines.push(`${cta.label || 'Zum Platzmanager'}: ${cta.url}`);
@@ -136,6 +153,13 @@ function eventRows(d) {
     d.time && ['Uhrzeit', `${d.time} Uhr${d.duration ? ` (Dauer: ${formatDuration(d.duration)})` : ''}`],
     d.fieldName && ['Platz', d.fieldName],
   ];
+  // Kabinen: konkrete Zuteilung (nach Genehmigung) hat Vorrang vor
+  // dem reinen Anzahl-Wunsch (vor Genehmigung).
+  if (d.cabins) {
+    rows.push(['Kabinen', d.cabins]);
+  } else if (d.cabinCount != null && d.cabinCount !== '') {
+    rows.push(['Anzahl Kabinen', String(d.cabinCount)]);
+  }
   // Bei Spielverlegung: bisherigen Termin als Vergleich darstellen.
   if (d.oldDate || d.oldTime) {
     const old = `${d.oldDate ? formatLongDate(d.oldDate) : ''}${d.oldTime ? ` ${d.oldTime} Uhr` : ''}`.trim();
@@ -151,7 +175,7 @@ function greet(u) {
 
 // ---- Template-Funktionen pro Notification-Typ ----
 
-function tmplRequestNew(n, u, appUrl) {
+function tmplRequestNew(n, u, _appUrl) {
   const d = n.data || {};
   const subject = `Neuer Antrag: ${d.requestTypeLabel || 'Antrag'}${d.team ? ` ${d.team}` : ''}`;
   const requesterLine = d.requesterEmail
@@ -164,70 +188,65 @@ function tmplRequestNew(n, u, appUrl) {
     rows: eventRows(d),
     notes: [d.note && { label: 'Anmerkung des Antragstellers', text: d.note }],
     footer: requesterLine ? `Antragsteller: ${requesterLine}` : '',
-    cta: { label: 'Im Platzmanager prüfen', url: appUrl },
   });
 }
 
-function tmplRequestReceived(n, u, appUrl) {
+function tmplRequestReceived(n, u, _appUrl) {
   const d = n.data || {};
   const subject = `Antrag eingegangen: ${d.requestTypeLabel || 'Antrag'}`;
   return renderEmail({
     subject,
     greeting: greet(u),
-    intro: 'Dein Antrag wurde aufgenommen und liegt jetzt den Admins zur Prüfung vor.',
+    intro: 'dein Antrag wurde aufgenommen und liegt jetzt den Admins zur Prüfung vor.',
     rows: eventRows(d),
     notes: [d.note && { label: 'Deine Anmerkung', text: d.note }],
     footer: 'Du erhältst eine weitere Mail, sobald über deinen Antrag entschieden wurde.',
-    cta: { label: 'Status im Platzmanager', url: appUrl },
   });
 }
 
-function tmplRequestApproved(n, u, appUrl) {
+function tmplRequestApproved(n, u, _appUrl) {
   const d = n.data || {};
   const subject = `Antrag genehmigt: ${d.requestTypeLabel || 'Antrag'}${d.team ? ` ${d.team}` : ''}`;
   const intro = d.decidedBy
-    ? `Dein Antrag wurde von ${d.decidedBy} genehmigt. Der Termin ist fest im Belegungsplan eingetragen.`
-    : 'Dein Antrag wurde genehmigt. Der Termin ist fest im Belegungsplan eingetragen.';
+    ? `dein Antrag wurde von ${d.decidedBy} genehmigt. Der Termin ist fest im Belegungsplan eingetragen.`
+    : 'dein Antrag wurde genehmigt. Der Termin ist fest im Belegungsplan eingetragen.';
   return renderEmail({
     subject,
     greeting: greet(u),
     intro,
     rows: eventRows(d),
     notes: [d.adminNote && { label: 'Anmerkung zur Genehmigung', text: d.adminNote }],
-    cta: { label: 'Termin im Platzmanager ansehen', url: appUrl },
   });
 }
 
-function tmplRequestRejected(n, u, appUrl) {
+function tmplRequestRejected(n, u, _appUrl) {
   const d = n.data || {};
   const subject = `Antrag abgelehnt: ${d.requestTypeLabel || 'Antrag'}${d.team ? ` ${d.team}` : ''}`;
   const intro = d.decidedBy
-    ? `Dein Antrag wurde von ${d.decidedBy} leider abgelehnt.`
-    : 'Dein Antrag wurde leider abgelehnt.';
+    ? `dein Antrag wurde von ${d.decidedBy} leider abgelehnt.`
+    : 'dein Antrag wurde leider abgelehnt.';
   return renderEmail({
     subject,
     greeting: greet(u),
     intro,
     rows: eventRows(d),
     notes: [d.adminNote && { label: 'Begründung', text: d.adminNote }],
-    cta: { label: 'Neuen Antrag stellen oder bestehenden überarbeiten', url: appUrl },
   });
 }
 
-function tmplRequestUpdate(n, u, appUrl) {
+function tmplRequestUpdate(n, u, _appUrl) {
   const d = n.data || {};
   const subject = `DFBNet-Antrag gestellt${d.team ? `: ${d.team}` : ''}`;
   return renderEmail({
     subject,
     greeting: greet(u),
-    intro: 'Für deine Spielverlegung wurde der DFBNet-Antrag gestellt. Die endgültige Freigabe erfolgt nach DFBNet-Bestätigung.',
+    intro: 'für deine Spielverlegung wurde der DFBNet-Antrag gestellt. Die endgültige Freigabe erfolgt nach DFBNet-Bestätigung.',
     rows: eventRows(d),
     footer: d.decidedBy ? `Eingereicht durch: ${d.decidedBy}` : '',
-    cta: { label: 'Status im Platzmanager', url: appUrl },
   });
 }
 
-function tmplEventCancelled(n, u, appUrl) {
+function tmplEventCancelled(n, u, _appUrl) {
   const d = n.data || {};
   const heading = [d.team, d.eventTypeLabel].filter(Boolean).join(' ');
   const subject = `Einheit fällt aus${heading ? `: ${heading}` : ''}`;
@@ -242,12 +261,12 @@ function tmplEventCancelled(n, u, appUrl) {
       d.day && !d.date && ['Wochentag', d.day],
       d.time && ['Uhrzeit', `${d.time} Uhr`],
       d.fieldName && ['Platz', d.fieldName],
+      d.cabins && ['Kabinen', d.cabins],
     ],
-    cta: { label: 'Im Platzmanager ansehen', url: appUrl },
   });
 }
 
-function tmplEventDeleted(n, u, appUrl) {
+function tmplEventDeleted(n, u, _appUrl) {
   const d = n.data || {};
   const heading = [d.team, d.eventTypeLabel].filter(Boolean).join(' ');
   const subject = `Einheit gelöscht${heading ? `: ${heading}` : ''}`;
@@ -262,8 +281,46 @@ function tmplEventDeleted(n, u, appUrl) {
       d.day && !d.date && ['Wochentag', d.day],
       d.time && ['Uhrzeit', `${d.time} Uhr`],
       d.fieldName && ['Platz', d.fieldName],
+      d.cabins && ['Kabinen', d.cabins],
     ],
-    cta: { label: 'Im Platzmanager ansehen', url: appUrl },
+  });
+}
+
+// Wenn ein Pflichtspiel ein bestehendes Training überlagert, werden
+// die Trainer der verdrängten Einheit benachrichtigt — Pflichtspiele
+// haben Vorrang, das Training muss umgeplant werden.
+function tmplTrainingDisplaced(n, u, _appUrl) {
+  const d = n.data || {};
+  const subject = `Trainingstermin überschnitten: ${d.trainingTeam || ''}`.trim();
+  const matchTimeEnd = d.matchTime && d.matchDuration
+    ? `${d.matchTime}–${addHoursToTime(d.matchTime, d.matchDuration)} Uhr`
+    : (d.matchTime ? `${d.matchTime} Uhr` : '');
+  return renderEmail({
+    subject,
+    greeting: greet(u),
+    intro: `${d.actorName || 'Ein Admin'} hat ein Pflichtspiel angelegt, das sich mit eurem Training überschneidet. Pflichtspiele haben Vorrang — bitte plant den Trainingstermin um.`,
+    sections: [
+      {
+        heading: 'Betroffenes Training',
+        rows: [
+          d.trainingTeam && ['Mannschaft', d.trainingTeam],
+          d.trainingDate && ['Datum', formatLongDate(d.trainingDate)],
+          d.trainingDay && !d.trainingDate && ['Wochentag', d.trainingDay],
+          d.trainingTime && ['Uhrzeit', `${d.trainingTime} Uhr${d.trainingDuration ? ` (Dauer: ${formatDuration(d.trainingDuration)})` : ''}`],
+          d.trainingFieldName && ['Platz', d.trainingFieldName],
+        ],
+      },
+      {
+        heading: 'Verdrängt durch Pflichtspiel',
+        rows: [
+          d.matchTeam && ['Mannschaft', d.matchTeam],
+          d.matchOpponent && ['Gegner', d.matchOpponent],
+          d.matchDate && ['Datum', formatLongDate(d.matchDate)],
+          matchTimeEnd && ['Uhrzeit', matchTimeEnd],
+          d.matchFieldName && ['Platz', d.matchFieldName],
+        ],
+      },
+    ],
   });
 }
 
@@ -282,6 +339,16 @@ function tmplWelcome(n, u, appUrl) {
   });
 }
 
+// Hilfsfunktion: addiert Stunden (z. B. 1.5) zu einer "HH:MM"-Zeit.
+function addHoursToTime(hhmm, hours) {
+  const m = String(hhmm).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const total = Number(m[1]) * 60 + Number(m[2]) + Math.round(Number(hours) * 60);
+  const h = Math.floor(total / 60) % 24;
+  const mi = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+}
+
 const TEMPLATES = {
   request_new: tmplRequestNew,
   request_received: tmplRequestReceived,
@@ -290,6 +357,7 @@ const TEMPLATES = {
   request_update: tmplRequestUpdate,
   event_cancelled: tmplEventCancelled,
   event_deleted: tmplEventDeleted,
+  training_displaced: tmplTrainingDisplaced,
   welcome: tmplWelcome,
 };
 
@@ -343,7 +411,7 @@ exports.sendNotificationEmail = onDocumentCreated(
       body: JSON.stringify({
         sender: { name: MAIL_FROM_NAME.value(), email: MAIL_FROM.value() },
         to: [{ email: u.email, name: u.name || u.firstName || '' }],
-        subject: sanitizeSubject('[Platzmanager] ' + mail.subject),
+        subject: sanitizeSubject(mail.subject),
         htmlContent: mail.html,
         textContent: mail.text,
       }),
