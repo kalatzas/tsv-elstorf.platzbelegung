@@ -69,6 +69,13 @@ exports.sendNotificationEmail = onDocumentCreated(
     if (!snap) return;
     const n = snap.data() || {};
     if (!n.recipientUid) return;
+    // Audit-Trail: nur Benachrichtigungen mit identifizierbarem Absender
+    // werden per Mail verschickt. Schützt vor Mail-Versand aus
+    // gefälschten Notifications.
+    if (!n.createdBy) {
+      console.warn('Notification ohne createdBy übersprungen', event.params?.id);
+      return;
+    }
     if (n.type && !MAIL_TYPES.has(n.type)) return;
 
     const userSnap = await db.collection('users').doc(n.recipientUid).get();

@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.44.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.45.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1431,8 +1431,8 @@
                         addNotification('Benutzer angelegt', 'success');
                         // Willkommens-Benachrichtigung (wird per Cloud Function auch als E-Mail versendet)
                         if (res.uid) {
-                            db.collection('notifications').add({
-                                recipientUid: res.uid, read: false, createdAt: Date.now(),
+                            await db.collection('notifications').add({
+                                recipientUid: res.uid, createdBy: authUser.uid, read: false, createdAt: Date.now(),
                                 type: 'welcome', title: 'Willkommen beim Platzbelegungsplaner',
                                 body: `Hallo ${fn},\n\nfür dich wurde ein Zugang zum Platzbelegungsplaner des TSV Elstorf angelegt.\n\n`
                                     + `E-Mail zum Anmelden: ${f.email.trim()}\nRolle: ${ROLE_LABELS[f.role] || f.role}\n\n`
@@ -1480,9 +1480,10 @@
             // notifications-Dokumente (siehe functions/index.js).
             const pushNotification = (recipientUids, payload) => {
                 if (!FIREBASE_READY) return;
+                if (!authUser?.uid) return;
                 const uids = [...new Set(recipientUids)].filter(Boolean);
                 uids.forEach((uid) => {
-                    db.collection('notifications').add({ recipientUid: uid, read: false, createdAt: Date.now(), ...payload })
+                    db.collection('notifications').add({ recipientUid: uid, createdBy: authUser.uid, read: false, createdAt: Date.now(), ...payload })
                         .catch((e) => console.error('Benachrichtigung fehlgeschlagen:', e));
                 });
             };

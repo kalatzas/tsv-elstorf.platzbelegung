@@ -1,0 +1,92 @@
+// ──────────────────────────────────────────────────────────────────────
+// Firestore-Sicherheitsregeln (Referenz)
+// ──────────────────────────────────────────────────────────────────────
+//
+// Diese Datei ist ein VORSCHLAG für deine Firebase-Konsole. Sie ist
+// (noch) NICHT in firebase.json eingetragen — `firebase deploy` rührt
+// sie also nicht an. Grund: in der Konsole stehen vermutlich
+// abweichende Regeln, die wir nicht versehentlich überschreiben wollen.
+//
+// Vorgehen:
+//   1. In Firebase-Konsole → Firestore Database → Regeln öffnen.
+//   2. Aktuelle Regeln sichern (Copy-Paste in lokale Datei).
+//   3. Den NOTIFICATIONS-Block weiter unten in deine Regeln einfügen
+//      (vorhandenen `match /notifications/{id}`-Block ersetzen oder neu).
+//   4. „Veröffentlichen" klicken.
+//   5. App testen: Antrag stellen, genehmigen, ablehnen, Termin absagen
+//      — überall muss die Inbox-Benachrichtigung noch funktionieren.
+//
+// Was diese Regeln blockieren:
+//   • Notifications ohne `createdBy` (Mail-Function ignoriert die ohnehin,
+//     aber Rules verhindern, dass sie überhaupt geschrieben werden).
+//   • `createdBy`-Spoofing (muss = auth.uid sein → Audit-Trail).
+//   • Zu lange title/body (verhindert ungewollten Massenversand mit
+//     riesigen Inhalten).
+//   • Anderer User markiert nicht eigene Notifications als gelesen oder
+//     löscht sie.
+// ──────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── NOTIFICATIONS ────────────────────────────────────────────────
+    // Trigger der Mail-Function. Sicherheitskritisch.
+    match /notifications/{id} {
+      allow read: if request.auth != null
+                  && resource.data.recipientUid == request.auth.uid;
+
+      allow create: if request.auth != null
+                    // createdBy zwingend = aktueller User (Audit-Trail)
+                    && request.resource.data.createdBy == request.auth.uid
+                    // Pflichtfelder
+                    && request.resource.data.recipientUid is string
+                    && request.resource.data.recipientUid.size() > 0
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() <= 200
+                    && request.resource.data.body is string
+                    && request.resource.data.body.size() <= 5000
+                    // type ist optional, aber wenn gesetzt: maximal 50 Zeichen
+                    && (!('type' in request.resource.data)
+                        || (request.resource.data.type is string
+                            && request.resource.data.type.size() <= 50));
+
+      // Nur Empfänger darf `read` umschalten — sonst keine Updates.
+      allow update: if request.auth != null
+                    && resource.data.recipientUid == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['read']);
+
+      // Nur Empfänger darf eigene Notifications löschen.
+      allow delete: if request.auth != null
+                    && resource.data.recipientUid == request.auth.uid;
+    }
+
+    // ── REFERENZ FÜR ANDERE COLLECTIONS ──────────────────────────────
+    // ⚠️ Untenstehende Blöcke sind PLATZHALTER — sie überschreiben deine
+    // bestehenden Regeln NICHT, weil diese Datei nicht via firebase.json
+    // referenziert ist. Sobald wir den genauen Stand aus der Konsole
+    // kennen, ziehen wir sie hier nach und schalten den Repo-basierten
+    // Deploy frei.
+
+    // match /users/{uid} {
+    //   allow read:  if request.auth != null;
+    //   allow write: if request.auth != null
+    //                && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // }
+
+    // match /plans/{doc} {
+    //   allow read:  if request.auth != null;
+    //   allow write: if request.auth != null;
+    // }
+
+    // match /requests/{id} {
+    //   allow read:   if request.auth != null;
+    //   allow create: if request.auth != null
+    //                 && request.resource.data.requestedBy == request.auth.uid;
+    //   allow update, delete: if request.auth != null
+    //                 && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'bearbeiter'];
+    // }
+
+  }
+}
