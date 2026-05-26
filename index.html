@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.51.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.52.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -390,6 +390,24 @@
 
             // Termine sortieren: nach Platz, Art, Zeit, dann Jugend aufsteigend
             const eventTypeKeys = Object.keys(eventTypes);
+            // Sortier-Reihenfolge der Terminarten in der Liste/im Plan.
+            // Spiele zuerst (Pflicht > Freundschaft > Pokal), dann Training,
+            // Lager, Turnier, Platzsperre. Eigene Typen kommen danach in der
+            // Reihenfolge in der sie in eventTypes liegen.
+            const TYPE_SORT_ORDER = ['match', 'friendly', 'cup', 'training', 'camp', 'tournament', 'blocked'];
+            const typeSortRank = (type) => {
+                const i = TYPE_SORT_ORDER.indexOf(type);
+                if (i >= 0) return i;
+                const j = eventTypeKeys.indexOf(type);
+                return j < 0 ? 999 : TYPE_SORT_ORDER.length + j;
+            };
+            // Position innerhalb des Platzes: Links zusammen, Mitte zusammen,
+            // Rechts zusammen, dann der ganze Platz (keine Position) ans Ende.
+            const POSITION_SORT_ORDER = ['li', 'mi', 're', ''];
+            const positionSortRank = (pos) => {
+                const i = POSITION_SORT_ORDER.indexOf(pos || '');
+                return i < 0 ? 999 : i;
+            };
             // Antragsarten = vom Admin verwaltete Terminarten (+ Spielverlegung als Sonderfall)
             const requestTypeOptions = (() => {
                 const out = {};
@@ -397,13 +415,19 @@
                 out.reschedule = 'Spielverlegung';
                 return out;
             })();
+            // Sortierung: Platz -> Position (Li/Mi/Re zusammen, ganzer Platz
+            // ans Ende) -> Terminart (Spiele zuerst, dann Training, ...)
+            // -> Uhrzeit aufsteigend -> Mannschaft (Stammdaten-Reihenfolge).
             const compareEvents = (a, b) => {
                 const fa = fields.findIndex(f => f.id === a.field);
                 const fb = fields.findIndex(f => f.id === b.field);
                 if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
-                const ta = eventTypeKeys.indexOf(a.type);
-                const tb = eventTypeKeys.indexOf(b.type);
-                if (ta !== tb) return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb);
+                const pa = positionSortRank(a.position);
+                const pb = positionSortRank(b.position);
+                if (pa !== pb) return pa - pb;
+                const ta = typeSortRank(a.type);
+                const tb = typeSortRank(b.type);
+                if (ta !== tb) return ta - tb;
                 const tc = (a.time || '').localeCompare(b.time || '');
                 if (tc !== 0) return tc;
                 const ya = teams.indexOf(asList(a.team)[0]);
