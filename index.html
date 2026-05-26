@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.45.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.46.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -1389,8 +1389,9 @@
             const createUserAccount = async ({ firstName, lastName, email, password, role, teams, notifyEmail }) => {
                 const secondary = firebase.apps.find(a => a.name === 'secondary')
                     || firebase.initializeApp(firebaseConfig, 'secondary');
+                let cred = null;
                 try {
-                    const cred = await secondary.auth().createUserWithEmailAndPassword(email.trim(), password);
+                    cred = await secondary.auth().createUserWithEmailAndPassword(email.trim(), password);
                     const fn = firstName.trim(), ln = lastName.trim();
                     await db.collection('users').doc(cred.user.uid).set({
                         firstName: fn, lastName: ln, name: `${fn} ${ln}`.trim(),
@@ -1400,6 +1401,14 @@
                     await secondary.auth().signOut();
                     return { ok: true, uid };
                 } catch (e) {
+                    // Rollback: wenn der Auth-Account schon angelegt war, aber das
+                    // Profildoc nicht geschrieben werden konnte, den Auth-Account
+                    // wieder loeschen — sonst bleibt ein Orphan zurueck, der die
+                    // E-Mail-Adresse blockiert.
+                    if (cred?.user) {
+                        try { await cred.user.delete(); } catch (_) { /* best effort */ }
+                    }
+                    try { await secondary.auth().signOut(); } catch (_) { /* best effort */ }
                     return { ok: false, error: e.message };
                 }
             };

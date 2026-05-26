@@ -59,6 +59,17 @@ function buildHtml(payload, appUrl) {
 </body></html>`;
 }
 
+function buildText(payload, appUrl) {
+  const body = String(payload.body || '');
+  return `${payload.title || 'Platzmanager'}\n\n${body}${appUrl ? `\n\nZum Platzmanager: ${appUrl}` : ''}\n`;
+}
+
+// Entfernt CR/LF aus dem Subject — defensiv gegen SMTP-Header-Injection,
+// falls Brevo den Wert ungeprüft in den Subject-Header schreibt.
+function sanitizeSubject(s) {
+  return String(s == null ? '' : s).replace(/[\r\n]+/g, ' ').slice(0, 200);
+}
+
 exports.sendNotificationEmail = onDocumentCreated(
   {
     document: 'notifications/{id}',
@@ -76,7 +87,7 @@ exports.sendNotificationEmail = onDocumentCreated(
       console.warn('Notification ohne createdBy übersprungen', event.params?.id);
       return;
     }
-    if (n.type && !MAIL_TYPES.has(n.type)) return;
+    if (!MAIL_TYPES.has(n.type)) return;
 
     const userSnap = await db.collection('users').doc(n.recipientUid).get();
     if (!userSnap.exists) return;
@@ -94,15 +105,20 @@ exports.sendNotificationEmail = onDocumentCreated(
       body: JSON.stringify({
         sender: { name: MAIL_FROM_NAME.value(), email: MAIL_FROM.value() },
         to: [{ email: u.email, name: u.name || u.firstName || '' }],
-        subject: '[Platzmanager] ' + (n.title || 'Benachrichtigung'),
+        subject: sanitizeSubject('[Platzmanager] ' + (n.title || 'Benachrichtigung')),
         htmlContent: buildHtml(n, APP_URL.value()),
+        textContent: buildText(n, APP_URL.value()),
       }),
     });
 
     if (!res.ok) {
-      const txt = await res.text();
-      console.error('Brevo sendMail fehlgeschlagen', res.status, txt);
-      throw new Error(`Brevo sendMail ${res.status}`);
+      // PII-arm loggen: nur Status + ggf. Brevo-Errorcode, nicht den
+      // ganzen Errorbody (der oft die Empfängeradresse echo't).
+      let code = '';
+      try { code = (await res.json())?.code || ''; } catch (_) { /* ignore */ }
+      console.error('Brevo sendMail fehlgeschlagen', { status: res.status, code, notificationId: event.params?.id });
+      // Bewusst kein throw: bei 4xx wäre Retry sinnlos, bei 5xx ist
+      // Mail-Verlust besser als Duplikate ohne Idempotenz-Marker.
     }
   }
 );
