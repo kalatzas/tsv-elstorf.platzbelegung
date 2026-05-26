@@ -47,7 +47,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
         // Zeitpunkt des Seitenaufrufs – für Browser-Hinweise nur bei neuen Benachrichtigungen
         const APP_OPENED_AT = Date.now();
 
@@ -248,7 +248,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.49.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.50.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -268,6 +268,7 @@
             const [showAddModal, setShowAddModal] = useState(false);
             const [editingEvent, setEditingEvent] = useState(null);
             const [showExportModal, setShowExportModal] = useState(false);
+            const [showConflictsModal, setShowConflictsModal] = useState(false);
             const [notifications, setNotifications] = useState([]);
             const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'calendar' : 'table'); // table, calendar, fields
             const [confirmDialog, setConfirmDialog] = useState(null);
@@ -636,6 +637,38 @@
                 });
             };
 
+            // Alle offenen Konflikte: Paare aus (verdraengender Termin, verdraengtes
+            // Training). Training-auf-Training und Platzsperren werden ausgenommen,
+            // weil die nicht in den "Trainer informieren"-Flow gehoeren.
+            const conflictPairs = useMemo(() => {
+                const pairs = [];
+                events.forEach(displacer => {
+                    if (!displacer || displacer.cancelled) return;
+                    if (displacer.type === 'training' || displacer.type === 'blocked') return;
+                    if (!displacer.field || !displacer.day || !displacer.time) return;
+                    const start = timeToHours(displacer.time);
+                    const end = start + displacer.duration;
+                    events.forEach(t => {
+                        if (t.id === displacer.id) return;
+                        if (t.type !== 'training' || t.cancelled) return;
+                        if (t.field !== displacer.field || t.day !== displacer.day) return;
+                        if (t.weekOffset !== undefined && displacer.weekOffset !== undefined
+                            && t.weekOffset !== displacer.weekOffset) return;
+                        const tStart = timeToHours(t.time);
+                        if (!(start < tStart + t.duration && tStart < end)) return;
+                        const sharable = t.position && displacer.position && t.position !== displacer.position;
+                        if (sharable) return;
+                        pairs.push({ displacer, training: t });
+                    });
+                });
+                return pairs;
+            }, [events]);
+
+            const displacedTrainingIds = useMemo(
+                () => new Set(conflictPairs.map(p => p.training.id)),
+                [conflictPairs]
+            );
+
             // Enthält der Sperrzeitraum mindestens einen bestimmten Wochentag? (0 = Montag)
             const closureCoversWeekday = (closure, dayIndex) => {
                 const from = new Date(closure.fromDate + 'T00:00:00');
@@ -738,12 +771,15 @@
                 const isReq = !!event.isRequest;
                 const isGame = GAME_TYPES.includes(event.type);
                 const isAway = isGame && event.venue === 'away';
+                const isDisplaced = !isCancelled && displacedTrainingIds.has(event.id);
                 const heading = isBlocked ? 'Sperre'
                     : (isGame && event.title ? `${joinList(event.team)} – ${event.title}` : joinList(event.team));
+                const borderCls = isDisplaced ? 'border-2 border-red-500'
+                    : (isReq ? (event.requestStatus === 'dfbnet' ? 'border-2 border-dashed border-blue-400' : 'border-2 border-dashed border-amber-400') : 'border border-gray-200');
                 return (
                     <div
                         key={event.id}
-                        className={`bg-white rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow flex overflow-hidden ${isCancelled ? 'opacity-60' : ''} ${isReq ? (event.requestStatus === 'dfbnet' ? 'border-2 border-dashed border-blue-400' : 'border-2 border-dashed border-amber-400') : 'border border-gray-200'}`}
+                        className={`bg-white rounded-lg shadow-sm text-xs cursor-pointer hover:shadow transition-shadow flex overflow-hidden ${isCancelled ? 'opacity-60' : ''} ${borderCls}`}
                         onClick={() => handleEventClick(event)}
                         onMouseEnter={(e) => handleEventHover(event, e)}
                         onMouseLeave={handleEventLeave}
@@ -761,6 +797,7 @@
                         <div className="flex-1 min-w-0 p-2">
                             <div className="flex items-start gap-1.5 min-w-0">
                                 <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: isBlocked ? '#6b7280' : (teamColors[asList(event.team)[0]] || '#9ca3af') }}></span>
+                                {isDisplaced && <Icon name="alert" className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />}
                                 <span className={`text-sm font-bold text-gray-900 leading-tight ${isCancelled ? 'line-through' : ''}`}>{heading}</span>
                             </div>
                             <div className="space-y-0.5 mt-1">
@@ -2332,6 +2369,9 @@
                             {FIREBASE_READY && isAdmin && (
                                 <button onClick={() => { setManagementTab('users'); setShowManagement(true); }} title="Verwaltung" aria-label="Verwaltung" className="bg-slate-700 text-white p-2 rounded hover:bg-slate-800 transition-colors flex items-center justify-center"><Icon name="settings" className="w-5 h-5" /></button>
                             )}
+                            {canManageRequests && conflictPairs.length > 0 && (
+                                <button onClick={() => setShowConflictsModal(true)} title={`${conflictPairs.length} offene Konflikt${conflictPairs.length === 1 ? '' : 'e'}`} aria-label="Konflikte anzeigen" className="relative bg-red-600 text-white p-2 rounded hover:bg-red-700 transition-colors flex items-center justify-center gap-1.5 px-3 text-sm font-semibold"><Icon name="alert" className="w-5 h-5" /> <span>{conflictPairs.length} Konflikt{conflictPairs.length === 1 ? '' : 'e'}</span></button>
+                            )}
                             {FIREBASE_READY && authUser && (
                                 <button onClick={() => setShowInbox(true)} title="Benachrichtigungen" aria-label="Benachrichtigungen" className="relative bg-gray-200 text-gray-800 p-2 rounded hover:bg-gray-300 transition-colors flex items-center justify-center"><Icon name="bell" className="w-5 h-5" />{unreadInbox.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{unreadInbox.length}</span>}</button>
                             )}
@@ -2569,11 +2609,13 @@
                                         
                                         // Entscheidung für kompakte Darstellung basierend auf verfügbarer Breite
                                         const isCompact = eventWidth < 120;
-                                        
+                                        const isDisplaced = !eventPos.cancelled && displacedTrainingIds.has(eventPos.id);
+                                        const borderCls = isDisplaced ? 'border-2 border-red-500'
+                                            : (eventPos.isRequest ? 'border-2 border-dashed border-amber-400' : 'border');
                                         return (
                                             <div
                                                 key={eventPos.id}
-                                                className={`${field?.color} ${eventPos.isRequest ? 'border-2 border-dashed border-amber-400' : 'border'} ${eventPos.cancelled ? 'opacity-60' : ''} rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
+                                                className={`${field?.color} ${borderCls} ${eventPos.cancelled ? 'opacity-60' : ''} rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow absolute z-10 text-xs overflow-hidden`}
                                                 style={{
                                                     top: `${topPos}px`,
                                                     left: `${eventLeft}px`,
@@ -2603,7 +2645,10 @@
                                                 {/* Event Content */}
                                                 <div className="p-1 space-y-0.5">
                                                     {/* Jugend und Titel */}
-                                                    <div className="font-bold text-gray-800 text-xs truncate">{joinList(eventPos.team)}</div>
+                                                    <div className="font-bold text-gray-800 text-xs truncate flex items-center gap-1">
+                                                        {isDisplaced && <Icon name="alert" className="w-3 h-3 text-red-600 shrink-0" />}
+                                                        <span className="truncate">{joinList(eventPos.team)}</span>
+                                                    </div>
                                                     {!isCompact && <div className="font-medium text-gray-700 text-xs truncate">{eventPos.title}</div>}
                                                     
                                                     {/* Platz und Position - kompakt */}
@@ -2783,11 +2828,12 @@
                                                                     const eventType = eventTypes[event.type];
                                                                     const eventSlots = Math.ceil(event.duration * 2);
                                                                     const isBlocker = event.type === 'blocked';
-                                                                    
+                                                                    const isDisplaced = !event.cancelled && displacedTrainingIds.has(event.id);
+
                                                                     return (
                                                                         <div
                                                                             key={event.id}
-                                                                            className={`absolute ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden ${event.cancelled ? 'opacity-50' : ''} ${event.isRequest ? 'ring-2 ring-amber-400 ring-inset' : ''}`}
+                                                                            className={`absolute ${isBlocker ? 'bg-gray-600' : eventType.color} text-white rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow z-20 overflow-hidden ${event.cancelled ? 'opacity-50' : ''} ${event.isRequest ? 'ring-2 ring-amber-400 ring-inset' : ''} ${isDisplaced ? 'ring-2 ring-red-500 ring-inset' : ''}`}
                                                                             style={{
                                                                                 top: '2px',
                                                                                 left: '2px',
@@ -2801,6 +2847,7 @@
                                                                             <div className="p-1 text-xs h-full flex flex-col">
                                                                                 <div className="flex items-center gap-1">
                                                                                     <Icon name={eventType.icon} className="w-3 h-3" />
+                                                                                    {isDisplaced && <Icon name="alert" className="w-3 h-3 text-red-200 shrink-0" />}
                                                                                     {!isBlocker && <span className={`font-bold truncate ${event.cancelled ? 'line-through' : ''}`}>{joinList(event.team)}</span>}
                                                                                     {isBlocker && <span className="font-bold truncate text-xs">{eventType.label}</span>}
                                                                                 </div>
@@ -3865,6 +3912,74 @@
                                     <button onClick={() => { const id = editingEvent.id; setEditingEvent(null); deleteEvent(id); }} className="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Löschen</button>
                                     <button onClick={() => setEditingEvent(null)} className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 px-3 rounded-md text-sm transition-colors">Abbrechen</button>
                                     <button onClick={updateEvent} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md text-sm transition-colors">Speichern</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal: Konflikt-Uebersicht (Admin) */}
+                    {showConflictsModal && (
+                        <div className="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowConflictsModal(false); }}>
+                            <div className="bg-white rounded-t-2xl sm:rounded-lg max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-between items-center p-4 border-b">
+                                    <h3 className="text-lg font-bold flex items-center gap-2"><Icon name="alert" className="w-5 h-5 text-red-600" /> Offene Konflikte ({conflictPairs.length})</h3>
+                                    <button onClick={() => setShowConflictsModal(false)} className="text-gray-500 hover:text-gray-700 text-xl" aria-label="Schliessen">×</button>
+                                </div>
+                                <div className="p-4 overflow-y-auto flex-1">
+                                    {conflictPairs.length === 0 ? (
+                                        <div className="text-center text-gray-500 py-8">Keine offenen Konflikte.</div>
+                                    ) : (
+                                        <p className="text-xs text-gray-600 mb-3">Trainings, die durch einen anderen Termin auf gleichem Platz, Tag und Uhrzeit verdrängt werden. Trainer wurden bereits per Mail informiert.</p>
+                                    )}
+                                    <ul className="space-y-3">
+                                        {conflictPairs.map((pair, idx) => {
+                                            const t = pair.training;
+                                            const d = pair.displacer;
+                                            const tField = fields.find(fl => fl.id === t.field);
+                                            const dField = fields.find(fl => fl.id === d.field);
+                                            const dType = eventTypes[d.type] || FALLBACK_EVENT_TYPE;
+                                            const dateLabel = t.eventDate ? new Date(t.eventDate).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : t.day;
+                                            const dDateLabel = d.eventDate ? new Date(d.eventDate).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : d.day;
+                                            return (
+                                                <li key={'cf' + idx + '_' + t.id + '_' + d.id} className="border rounded-lg overflow-hidden">
+                                                    <div className="bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 flex items-center gap-1.5">
+                                                        <Icon name="mapPin" className="w-3.5 h-3.5" /> {tField?.name || 'Platz?'} · {dateLabel} · {t.time} Uhr
+                                                    </div>
+                                                    <div className="p-3 space-y-2">
+                                                        <div className="text-sm">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Icon name="alert" className="w-4 h-4 text-red-600 shrink-0" />
+                                                                <span className="font-bold">{joinList(t.team)}</span>
+                                                                <span className="bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded">Training</span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-600 ml-6 mt-0.5">
+                                                                {t.time}–{getEventEndTime(t)} Uhr
+                                                                {asList(t.trainer).length > 0 && ` · ${asList(t.trainer).map(trainerFirstName).join(', ')}`}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 pl-5">verdrängt durch</div>
+                                                        <div className="text-sm">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Icon name={dType.icon} className="w-4 h-4 shrink-0" />
+                                                                <span className="font-bold">{joinList(d.team)}{d.title ? ` – ${d.title}` : ''}</span>
+                                                                <span className={`${dType.pill} text-xs px-1.5 py-0.5 rounded`}>{dType.label}</span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-600 ml-6 mt-0.5">
+                                                                {dDateLabel} · {d.time}–{getEventEndTime(d)} Uhr{dField && dField.id !== t.field ? ` · ${dField.name}` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                            <button onClick={() => { setShowConflictsModal(false); setEditingEvent({ ...t, date: toDateOnly(t.eventDate || t.date) }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded flex items-center gap-1"><Icon name="clock" className="w-3.5 h-3.5" /> Training verschieben</button>
+                                                            <button onClick={() => { setShowConflictsModal(false); cancelEvent(t); }} className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3 py-1.5 rounded flex items-center gap-1"><Icon name="ban" className="w-3.5 h-3.5" /> Training absagen</button>
+                                                        </div>
+                                                    </div>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
+                                <div className="p-3 border-t bg-gray-50 flex justify-end">
+                                    <button onClick={() => setShowConflictsModal(false)} className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded">Schliessen</button>
                                 </div>
                             </div>
                         </div>
