@@ -104,7 +104,12 @@
                 // der WebSocket-aehnliche Firestore-Stream geblockt oder
                 // gedrosselt wird (manche Schul-/Vereins-WLANs, Proxies).
                 try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) {}
-                db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+                // Offline-Persistence ist bewusst NICHT aktiviert. Sie hatte
+                // in der Praxis mehr Probleme verursacht (festgefahrener
+                // Offline-Status nach Browser-/Tab-Wechseln, korrupte
+                // IndexedDB-States) als Nutzen gebracht. Falls der Verein
+                // doch Offline-Bearbeitung braucht, hier wieder
+                // db.enablePersistence({ synchronizeTabs: true }) ergaenzen.
             } catch (e) {
                 console.error('Firebase-Initialisierung fehlgeschlagen:', e);
             }
@@ -266,7 +271,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.53.5'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.54.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
