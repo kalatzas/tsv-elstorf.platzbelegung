@@ -35,6 +35,12 @@
         .hover\:bg-white:hover,
         .focus\:bg-white:focus { background-color: #FDFCF9 !important; }
         body, .bg-gray-50 { background-color: #F4F1EA !important; }
+        /* Eingabefelder bleiben pures Weiss, damit sie sich klar vom Off-White
+           der Modals/Cards abheben. Wichtig fuer iOS, wo Selects und Inputs
+           sonst grau gerendert werden. */
+        input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+        select,
+        textarea { background-color: #FFFFFF; }
         /* Modal-Overlay: schiebt das Bottom-Sheet bei offener Tastatur nach oben */
         .modal-overlay { padding-bottom: var(--kb-inset); }
         @media (min-width: 640px) {
@@ -260,7 +266,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.53.4'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.53.5'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -3748,7 +3754,6 @@
                                                 <label className="block text-sm font-medium mb-1">{requestForm.type === 'reschedule' ? 'Begründung *' : 'Anmerkung (optional)'}</label>
                                                 <textarea value={requestForm.note} onChange={(e) => setRequestForm({...requestForm, note: e.target.value})} rows="2" className="w-full border rounded-md p-2 text-sm" placeholder={requestForm.type === 'reschedule' ? 'Warum soll das Spiel verlegt werden?' : 'optional'} />
                                             </div>
-                                            <button onClick={submitRequest} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-3 rounded-md text-sm">Antrag einreichen</button>
                                         </div>
                                     )}
                                     <div className="space-y-2 border-t pt-4">
@@ -3803,7 +3808,10 @@
                                         })()}
                                     </div>
                                 </div>
-                                <div className="flex p-6 border-t bg-gray-50">
+                                <div className="flex gap-2 p-6 border-t bg-gray-50">
+                                    {isTrainerLike && (
+                                        <button onClick={submitRequest} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-3 rounded-md text-sm">Antrag einreichen</button>
+                                    )}
                                     <button onClick={() => setShowRequestsModal(false)} className="flex-1 bg-white border border-gray-300 hover:bg-gray-100 py-2 px-3 rounded-md text-sm">Schließen</button>
                                 </div>
                             </div>
