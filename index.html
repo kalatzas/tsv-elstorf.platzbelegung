@@ -34,6 +34,7 @@
         .bg-white,
         .hover\:bg-white:hover,
         .focus\:bg-white:focus { background-color: #FDFCF9 !important; }
+        body, .bg-gray-50 { background-color: #FDFCF9 !important; }
         /* Modal-Overlay: schiebt das Bottom-Sheet bei offener Tastatur nach oben */
         .modal-overlay { padding-bottom: var(--kb-inset); }
         @media (min-width: 640px) {
@@ -259,7 +260,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.53.1'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.53.2'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
