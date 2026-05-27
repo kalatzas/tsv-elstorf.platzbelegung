@@ -28,6 +28,12 @@
 
     <style>
         :root { --kb-inset: 0px; }
+        /* Globaler Off-White-Ton fuer Flaechen (Karten, Modals, Header).
+           Wir ueberschreiben Tailwinds bg-white. text-white bleibt absichtlich
+           hartes Weiss, damit dunkle Buttons weiterhin korrekt aussehen. */
+        .bg-white,
+        .hover\:bg-white:hover,
+        .focus\:bg-white:focus { background-color: #FDFCF9 !important; }
         /* Modal-Overlay: schiebt das Bottom-Sheet bei offener Tastatur nach oben */
         .modal-overlay { padding-bottom: var(--kb-inset); }
         @media (min-width: 640px) {
@@ -253,7 +259,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.53.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.53.1'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
