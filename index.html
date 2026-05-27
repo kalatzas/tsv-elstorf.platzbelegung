@@ -47,7 +47,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
         // Zeitpunkt des Seitenaufrufs – für Browser-Hinweise nur bei neuen Benachrichtigungen
         const APP_OPENED_AT = Date.now();
 
@@ -86,6 +86,10 @@
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
                 auth = firebase.auth();
+                // Long-Polling automatisch erkennen: hilft in Netzen, in denen
+                // der WebSocket-aehnliche Firestore-Stream geblockt oder
+                // gedrosselt wird (manche Schul-/Vereins-WLANs, Proxies).
+                try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) {}
                 db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
             } catch (e) {
                 console.error('Firebase-Initialisierung fehlgeschlagen:', e);
@@ -248,7 +252,7 @@
         };
 
         const App = () => {
-            const APP_VERSION = '2.52.0'; // SemVer: Major.Minor.Patch
+            const APP_VERSION = '2.53.0'; // SemVer: Major.Minor.Patch
             
             const [events, setEvents] = useState([]);
             const [closures, setClosures] = useState([]);
@@ -264,6 +268,24 @@
             const [loginPassword, setLoginPassword] = useState('');
             const [loggingIn, setLoggingIn] = useState(false);
             const [cloudStatus, setCloudStatus] = useState(FIREBASE_READY ? 'connecting' : 'local');
+            // Debounce fuer Status-Badge: online/connecting/local sofort, aber
+            // offline/error erst nach 2.5s konstantem Zustand. So flackert das
+            // Badge nicht bei jedem kurzen Netz-Hicc-up.
+            const cloudStatusTimerRef = useRef(null);
+            const updateCloudStatus = (next) => {
+                if (cloudStatusTimerRef.current) {
+                    clearTimeout(cloudStatusTimerRef.current);
+                    cloudStatusTimerRef.current = null;
+                }
+                if (next === 'online' || next === 'connecting' || next === 'local') {
+                    setCloudStatus(next);
+                } else {
+                    cloudStatusTimerRef.current = setTimeout(() => {
+                        setCloudStatus(next);
+                        cloudStatusTimerRef.current = null;
+                    }, 2500);
+                }
+            };
             const [dataLoaded, setDataLoaded] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
             const [editingEvent, setEditingEvent] = useState(null);
@@ -1035,14 +1057,13 @@
                         setAppLogo((data && data.logo) || '');
                         setCustomTypes(data && Array.isArray(data.customTypes) ? data.customTypes : []);
                         setTypeLabels((data && data.typeLabels) || {});
-                        setCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
+                        updateCloudStatus(snap.metadata.fromCache ? 'offline' : 'online');
                         setDataLoaded(true);
                     },
                     (err) => {
                         console.error('Firestore-Fehler:', err);
-                        setCloudStatus('error');
+                        updateCloudStatus('error');
                         setDataLoaded(true);
-                        addNotification('Cloud-Verbindung fehlgeschlagen', 'warning');
                     }
                 );
                 const unsubAuth = auth.onAuthStateChanged(async (user) => {
@@ -1062,6 +1083,47 @@
                 });
                 return () => { unsubData(); unsubAuth(); };
             }, []);
+
+            // Verbindungs-Resilienz: Browser-Events nutzen, um die Firestore-
+            // Verbindung aktiv wiederherzustellen, und das Auth-Token nach
+            // laenger inaktivem Tab erneuern. Vermeidet "tote" Listener nach
+            // kurzem Netz-Ausfall oder langer Inaktivitaet im Hintergrund.
+            useEffect(() => {
+                if (!FIREBASE_READY || !db) return;
+                let recoveryTimer = null;
+                const tryReconnect = () => {
+                    if (!db) return;
+                    db.disableNetwork()
+                        .then(() => db.enableNetwork())
+                        .catch((e) => console.warn('Reconnect-Versuch fehlgeschlagen:', e));
+                };
+                const handleOnline = () => {
+                    if (db && db.enableNetwork) db.enableNetwork().catch(() => {});
+                    if (auth && auth.currentUser) auth.currentUser.getIdToken(true).catch(() => {});
+                };
+                const handleOffline = () => updateCloudStatus('offline');
+                const handleFocus = () => {
+                    if (auth && auth.currentUser) auth.currentUser.getIdToken(true).catch(() => {});
+                    if (typeof navigator !== 'undefined' && navigator.onLine && db && db.enableNetwork) {
+                        db.enableNetwork().catch(() => {});
+                    }
+                };
+                window.addEventListener('online', handleOnline);
+                window.addEventListener('offline', handleOffline);
+                window.addEventListener('focus', handleFocus);
+                // Bei Fehler-Status alle 15s versuchen, die Verbindung wieder
+                // hochzufahren. Sobald ein Snapshot wieder ankommt, springt
+                // das Badge automatisch auf "online".
+                if (cloudStatus === 'error') {
+                    recoveryTimer = setInterval(tryReconnect, 15000);
+                }
+                return () => {
+                    window.removeEventListener('online', handleOnline);
+                    window.removeEventListener('offline', handleOffline);
+                    window.removeEventListener('focus', handleFocus);
+                    if (recoveryTimer) clearInterval(recoveryTimer);
+                };
+            }, [cloudStatus]);
 
             // Benutzerliste laden (nur für angemeldete Nutzer)
             useEffect(() => {
